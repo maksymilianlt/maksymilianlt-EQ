@@ -1,0 +1,1897 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss: http: https: data: blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; font-src 'self' data: blob:;"
+    />
+    <title>maksymilianlt EQ</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body,
+      input,
+      select,
+      button {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          sans-serif;
+      }
+      body {
+        background: #111;
+        color: #eee;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
+      button {
+        background: #252525;
+        border: 1px solid #3a3a3a;
+        color: #fff;
+        cursor: pointer;
+        padding: 6px 12px;
+      }
+      button:hover {
+        background: #333;
+      }
+      canvas {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+      .workspace {
+        display: flex;
+        flex: 1;
+        height: calc(100vh - 51px);
+      }
+      .control-panel {
+        align-items: center;
+        background: #181818;
+        border-bottom: 1px solid #282828;
+        display: flex;
+        gap: 12px;
+        padding: 10px;
+      }
+      .label {
+        color: #777;
+        font-size: 11px;
+        margin-left: 8px;
+        text-transform: uppercase;
+      }
+      .btn-panel-standard {
+        height: 30px;
+        width: 126px;
+      }
+      .btn-trigger {
+        background: #10b981;
+        border-color: #059669;
+        height: 30px;
+        width: 100px;
+      }
+      #autoeq-trigger-btn:hover {
+        background: #059669 !important;
+      }
+      .btn-trigger-running {
+        background: #059669 !important;
+        opacity: 0.7;
+        cursor: wait;
+        animation: pulse-btn 1s ease-in-out infinite;
+      }
+      @keyframes pulse-btn {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 0.4; }
+      }
+      .hidden-file-input {
+        display: none;
+      }
+      .select-panel {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        color: #fff;
+        cursor: pointer;
+        height: 30px;
+        padding: 0px;
+        text-align: center;
+      }
+      .select-w-small {
+        width: 90px;
+      }
+      .select-w-medium {
+        width: 120px;
+      }
+      .select-w-large {
+        width: 145px;
+      }
+      .slider-group {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+      }
+      #band-slider {
+        cursor: pointer;
+        width: 150px;
+      }
+      #slider-val {
+        font-size: 12px;
+        min-width: 16px;
+      }
+      input[type='range'] {
+        -webkit-appearance: none;
+        appearance: none;
+        background: #252525;
+        border-radius: 3px;
+        height: 6px;
+        outline: none;
+      }
+      input[type='range']::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        background: #3b82f6;
+        border-radius: 50%;
+        cursor: pointer;
+        height: 14px;
+        width: 14px;
+      }
+      input[type='range']::-moz-range-thumb {
+        background: #3b82f6;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        height: 14px;
+        width: 14px;
+      }
+      .sidebar {
+        background: #141414;
+        border-right: 1px solid #252525;
+        display: flex;
+        flex-direction: column;
+        width: 280px;
+      }
+      .sidebar-header {
+        align-items: center;
+        border-bottom: 1px solid #252525;
+        display: flex;
+        justify-content: space-between;
+        padding: 10px;
+      }
+      .sidebar-header h3 {
+        color: #aaa;
+        font-size: 13px;
+      }
+      .add-btn {
+        background: #1e3a8a;
+        border-color: #2563eb;
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+      .accuracy-container {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #accuracy-rating {
+        color: #10b981;
+        font-size: 10px;
+      }
+      .anchor-container {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        gap: 6px;
+        overflow-y: auto;
+        padding: 8px;
+      }
+      .band-row {
+        background: #1c1c1c;
+        border: 1px solid #2c2c2c;
+        box-sizing: border-box;
+        display: block;
+        margin-bottom: 8px;
+        min-height: 76px;
+        padding: 8px;
+      }
+      .band-top {
+        align-items: center;
+        display: grid;
+        gap: 6px;
+        grid-template-columns: 30px 62px minmax(0, 1fr) 28px;
+      }
+      .band-values {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        margin-top: 7px;
+        padding-left: 0;
+      }
+      .band-values input[type='number'] {
+        height: 26px;
+        min-width: 0;
+      }
+      .band-top .freq-input {
+        height: 26px;
+        min-width: 0;
+        width: 100%;
+      }
+      .band-row.band-disabled {
+        opacity: 0.45;
+        background: #161616;
+      }
+      .eye-toggle {
+        align-items: center;
+        background: transparent;
+        border: 1px solid #3a3a3a;
+        color: #aaa;
+        cursor: pointer;
+        display: flex;
+        height: 26px;
+        justify-content: center;
+        padding: 0;
+        width: 30px;
+      }
+      .eye-toggle:hover {
+        background: #2a2a2a;
+        color: #fff;
+      }
+      .eye-toggle.eye-disabled {
+        border-color: #333;
+        color: #555;
+      }
+      .eye-toggle.eye-disabled:hover {
+        color: #888;
+      }
+      .norm-freq-input {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        color: #fff;
+        font-size: 11px;
+        height: 30px;
+        padding: 2px 4px;
+        text-align: center;
+        width: 80px;
+      }
+      .filter-dropdown {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        height: 26px;
+        min-width: 0;
+        padding: 2px;
+        width: 100%;
+      }
+      .filter-num-input {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        box-sizing: border-box;
+        color: #fff;
+        font-size: 11px;
+        padding: 2px;
+        width: 100%;
+      }
+      .band-row input[type='number'] {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        box-sizing: border-box;
+        color: #fff;
+        font-size: 11px;
+        min-width: 0;
+        padding: 2px 4px;
+        width: 100%;
+      }
+      .band-row input {
+        background: #0f0f0f;
+        border: 1px solid #333;
+        color: #fff;
+        font-size: 12px;
+        height: 26px;
+        min-width: 0;
+        padding: 2px 5px;
+        text-align: center;
+        width: 100%;
+      }
+      .band-row input.freq-input {
+        width: 100%;
+      }
+      .band-row .del-btn {
+        align-items: center;
+        background: #7f1d1d;
+        border: 1px solid #991b1b;
+        color: #ef4444;
+        cursor: pointer;
+        display: flex;
+        font-size: 11px;
+        height: 22px;
+        justify-content: center;
+        padding: 0;
+        width: 24px;
+      }
+      .band-row .del-btn:hover {
+        background: #991b1b;
+      }
+      .del-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        width: 24px;
+        height: 24px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .graph-container {
+        background: #080808;
+        flex: 1;
+        position: relative;
+      }
+      .status-excellent {
+        color: #10b981;
+      }
+      .status-warning {
+        color: #f59e0b;
+      }
+      .status-critical {
+        color: #ef4444;
+      }
+      .status-disabled {
+        color: #666;
+      }
+      .btn-export {
+        background: #2563eb;
+        border-color: #1d4ed8;
+        height: 30px;
+        width: 90px;
+      }
+      .btn-export:hover {
+        background: #1d4ed8 !important;
+      }
+      .btn-export-curve {
+        background: #7c3aed;
+        border-color: #6d28d9;
+        height: 30px;
+        width: 105px;
+      }
+      .btn-export-curve:hover {
+        background: #6d28d9 !important;
+      }
+    </style>
+    <meta
+      property="og:image"
+      content="https://maksymilianlt.github.io/maksymilianlt-EQ/preview.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:image"
+      content="https://maksymilianlt.github.io/maksymilianlt-EQ/preview.png"
+    />
+  </head>
+  <body>
+    <div class="control-panel">
+      <button
+        onclick="document.getElementById('file-curve').click()"
+        id="curve-import-btn"
+        class="btn-panel-standard"
+      >
+        Import Curve
+      </button>
+      <button
+        onclick="document.getElementById('file-target').click()"
+        id="target-import-btn"
+        class="btn-panel-standard"
+      >
+        Import Target
+      </button>
+      <input
+        type="file"
+        id="file-curve"
+        accept=".txt,.csv"
+        class="hidden-file-input"
+      />
+      <input
+        type="file"
+        id="file-target"
+        accept=".txt,.csv"
+        class="hidden-file-input"
+      />
+      <button id="export-eq-btn" class="btn-export">Export EQ</button>
+      <button id="export-curve-btn" class="btn-export-curve">
+        Export Curve
+      </button>
+      <button id="autoeq-trigger-btn" class="btn-trigger">Run AutoEQ</button>
+      <span class="label">Max Filter Bands:</span>
+      <div class="slider-group">
+        <input type="range" id="band-slider" min="1" max="31" value="10" />
+        <span id="slider-val">10</span>
+      </div>
+      <span class="label">Sample Rate:</span>
+      <select id="sample-rate-input" class="select-panel select-w-small">
+        <option value="44100">44100</option>
+        <option value="48000" selected>48000</option>
+        <option value="88200">88200</option>
+        <option value="96000">96000</option>
+        <option value="176400">176400</option>
+        <option value="192000">192000</option>
+        <option value="352800">352800</option>
+        <option value="384000">384000</option>
+        <option value="705600">705600</option>
+        <option value="768000">768000</option>
+        <option value="1411200">1411200</option>
+        <option value="1536000">1536000</option>
+      </select>
+      <span class="label">Smoothing:</span>
+      <select id="smoothing-input" class="select-panel select-w-medium">
+        <option value="none" selected>None</option>
+        <option value="1/48">1/48 Octave</option>
+        <option value="1/24">1/24 Octave</option>
+        <option value="1/12">1/12 Octave</option>
+        <option value="1/6">1/6 Octave</option>
+        <option value="1/3">1/3 Octave</option>
+        <option value="1/2">1/2 Octave</option>
+        <option value="1/1">1/1 Octave</option>
+      </select>
+      <span class="label">Smooth Target:</span>
+      <select id="smoothing-target-input" class="select-panel select-w-large">
+        <option value="both">Curve + Target</option>
+        <option value="curve" selected>Curve</option>
+        <option value="target">Target</option>
+      </select>
+      <span class="label">Norm. Freq (Hz):</span>
+      <input
+        type="number"
+        id="norm-freq-input"
+        class="norm-freq-input"
+        value="1000"
+        step="1"
+        min="20"
+        max="20000"
+      />
+    </div>
+    <div class="workspace">
+      <div class="sidebar">
+        <div class="sidebar-header">
+          <div class="accuracy-container">
+            <h3>Filter Bands</h3>
+            <span id="accuracy-rating">Accuracy: 100.00%</span>
+          </div>
+          <button id="add-band-btn" class="add-btn">+ Add Band</button>
+        </div>
+        <div id="anchor-list" class="anchor-container"></div>
+      </div>
+      <div class="graph-container">
+        <canvas id="eq-graph"></canvas>
+      </div>
+    </div>
+    <script>
+      function calculateFilterEffect(f, fc, gain, q, sampleRate, type = 'PK') {
+        if (gain === 0 || q <= 0.001) return 0;
+        if (fc >= sampleRate / 2 || f >= sampleRate / 2) return 0;
+        const w0 = (2 * Math.PI * fc) / sampleRate;
+        const w = (2 * Math.PI * f) / sampleRate;
+        const cosW0 = Math.cos(w0);
+        const sinW0 = Math.sin(w0);
+        const A = Math.pow(10, gain / 40);
+        const alpha = sinW0 / (2 * q);
+        let b0, b2, a0, a2;
+        let sum_b, linear_b, sum_a, linear_a;
+        const sinSqW0 = Math.sin(w0 / 2) * Math.sin(w0 / 2);
+        if (type === 'LSC') {
+          const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+          b0 = A * (A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha);
+          b2 = A * (A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha);
+          a0 = A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha;
+          a2 = A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha;
+          sum_b = 8 * A * A * sinSqW0;
+          linear_b = sum_b + 4 * A * Math.sqrt(A) * alpha;
+          sum_a = 8 * sinSqW0;
+          linear_a = sum_a + 4 * Math.sqrt(A) * alpha;
+        } else if (type === 'HSC') {
+          const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+          b0 = A * (A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha);
+          b2 = A * (A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha);
+          a0 = A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha;
+          a2 = A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha;
+          sum_b = 8 * A * sinSqW0;
+          linear_b = sum_b + 4 * A * Math.sqrt(A) * alpha;
+          sum_a = 8 * A * sinSqW0;
+          linear_a = sum_a + 4 * Math.sqrt(A) * alpha;
+        } else {
+          b0 = 1 + alpha * A;
+          b2 = 1 - alpha * A;
+          a0 = 1 + alpha / A;
+          a2 = 1 - alpha / A;
+          sum_b = 4 * sinSqW0;
+          linear_b = sum_b + 2 * alpha * A;
+          sum_a = sum_b;
+          linear_a = sum_a + (2 * alpha) / A;
+        }
+        const dz_re = -2 * Math.sin(w / 2) * Math.sin(w / 2);
+        const dz_im = Math.sin(w);
+        const dz2_re = dz_re * dz_re - dz_im * dz_im;
+        const dz2_im = 2 * dz_re * dz_im;
+        const num_re = b0 * dz2_re + linear_b * dz_re + sum_b;
+        const num_im = b0 * dz2_im + linear_b * dz_im;
+        const numMagSq = num_re * num_re + num_im * num_im;
+        const den_re = a0 * dz2_re + linear_a * dz_re + sum_a;
+        const den_im = a0 * dz2_im + linear_a * dz_im;
+        const denMagSq = den_re * den_re + den_im * den_im;
+        if (denMagSq <= 1e-20 || isNaN(denMagSq) || isNaN(numMagSq)) return 0;
+        const ratio = numMagSq / denMagSq;
+        if (ratio <= 1e-20) return -200;
+        return 10 * Math.log10(ratio);
+      }
+
+      function computeFilterCoeffs(fc, gain, q, sampleRate, type) {
+        if (gain === 0 || q <= 0.001) return null;
+        if (fc >= sampleRate / 2) return null;
+        const w0 = (2 * Math.PI * fc) / sampleRate;
+        const cosW0 = Math.cos(w0);
+        const sinW0 = Math.sin(w0);
+        const A = Math.pow(10, gain / 40);
+        const alpha = sinW0 / (2 * q);
+        const sinSqW0 = Math.sin(w0 / 2) * Math.sin(w0 / 2);
+        let b0, sum_b, linear_b, sum_a, linear_a, a0;
+        if (type === 'LSC') {
+          const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+          b0 = A * (A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha);
+          sum_b = 8 * A * A * sinSqW0;
+          linear_b = sum_b + 4 * A * Math.sqrt(A) * alpha;
+          sum_a = 8 * sinSqW0;
+          linear_a = sum_a + 4 * Math.sqrt(A) * alpha;
+          a0 = A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha;
+        } else if (type === 'HSC') {
+          const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
+          b0 = A * (A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha);
+          sum_b = 8 * A * sinSqW0;
+          linear_b = sum_b + 4 * A * Math.sqrt(A) * alpha;
+          sum_a = 8 * A * sinSqW0;
+          linear_a = sum_a + 4 * Math.sqrt(A) * alpha;
+          a0 = A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha;
+        } else {
+          b0 = 1 + alpha * A;
+          sum_b = 4 * sinSqW0;
+          linear_b = sum_b + 2 * alpha * A;
+          sum_a = sum_b;
+          linear_a = sum_a + (2 * alpha) / A;
+          a0 = 1 + alpha / A;
+        }
+        return { b0, a0, sum_b, linear_b, sum_a, linear_a };
+      }
+
+      function evalFilterBatch(coeffs, dz_re, dz_im, dz2_re, dz2_im, N, output) {
+        if (!coeffs) {
+          output.fill(0);
+          return;
+        }
+        const { b0, a0, sum_b, linear_b, sum_a, linear_a } = coeffs;
+        for (let i = 0; i < N; i++) {
+          const num_re = b0 * dz2_re[i] + linear_b * dz_re[i] + sum_b;
+          const num_im = b0 * dz2_im[i] + linear_b * dz_im[i];
+          const numMagSq = num_re * num_re + num_im * num_im;
+          const den_re = a0 * dz2_re[i] + linear_a * dz_re[i] + sum_a;
+          const den_im = a0 * dz2_im[i] + linear_a * dz_im[i];
+          const denMagSq = den_re * den_re + den_im * den_im;
+          if (denMagSq <= 1e-20 || isNaN(denMagSq) || isNaN(numMagSq)) { output[i] = 0; continue; }
+          const ratio = numMagSq / denMagSq;
+          output[i] = ratio <= 1e-20 ? -200 : 10 * Math.log10(ratio);
+        }
+      }
+
+      function precomputeFreqData(evalFreqs, sampleRate, N) {
+        const dz_re = new Float64Array(N);
+        const dz_im = new Float64Array(N);
+        const dz2_re = new Float64Array(N);
+        const dz2_im = new Float64Array(N);
+        for (let i = 0; i < N; i++) {
+          const w = (2 * Math.PI * evalFreqs[i]) / sampleRate;
+          const sinHalfW = Math.sin(w / 2);
+          const sre = -2 * sinHalfW * sinHalfW;
+          const sim = Math.sin(w);
+          dz_re[i] = sre;
+          dz_im[i] = sim;
+          dz2_re[i] = sre * sre - sim * sim;
+          dz2_im[i] = 2 * sre * sim;
+        }
+        return { dz_re, dz_im, dz2_re, dz2_im };
+      }
+
+      function evalAndAccumulate(coeffs, dz_re, dz_im, dz2_re, dz2_im, N, residual, weights, output) {
+        if (!coeffs) {
+          let num = 0, den = 0;
+          for (let i = 0; i < N; i++) {
+            num += residual[i] * 0 * weights[i];
+            den += 0;
+          }
+          return { num, den };
+        }
+        const { b0, a0, sum_b, linear_b, sum_a, linear_a } = coeffs;
+        let num = 0, den = 0;
+        for (let i = 0; i < N; i++) {
+          const num_re = b0 * dz2_re[i] + linear_b * dz_re[i] + sum_b;
+          const num_im = b0 * dz2_im[i] + linear_b * dz_im[i];
+          const numMagSq = num_re * num_re + num_im * num_im;
+          const den_re = a0 * dz2_re[i] + linear_a * dz_re[i] + sum_a;
+          const den_im = a0 * dz2_im[i] + linear_a * dz_im[i];
+          const denMagSq = den_re * den_re + den_im * den_im;
+          let effect;
+          if (denMagSq <= 1e-20 || isNaN(denMagSq) || isNaN(numMagSq)) {
+            effect = 0;
+          } else {
+            const ratio = numMagSq / denMagSq;
+            effect = ratio <= 1e-20 ? -200 : 10 * Math.log10(ratio);
+          }
+          if (output) output[i] = effect;
+          const w = weights[i];
+          num += residual[i] * effect * w;
+          den += effect * effect * w;
+        }
+        return { num, den };
+      }
+    </script>
+    <script>
+      const EVAL_POINT_COUNT = 1000;
+
+      function generateEvaluationPoints() {
+        const points = new Float64Array(EVAL_POINT_COUNT);
+        const minLog = Math.log10(20);
+        const maxLog = Math.log10(20000);
+        const span = maxLog - minLog;
+        points[0] = 20.0;
+        points[EVAL_POINT_COUNT - 1] = 20000.0;
+        for (let i = 1; i < EVAL_POINT_COUNT - 1; i++) {
+          points[i] = Math.pow(10, minLog + (i / (EVAL_POINT_COUNT - 1)) * span);
+        }
+        return points;
+      }
+
+      function calculateRMSE(curve, target, bands, interpolateFn, sampleRate) {
+        const evalFreqs = generateEvaluationPoints();
+        const N = evalFreqs.length;
+        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+        let sumSquaredError = 0;
+        const effectBuf = new Float64Array(N);
+        const totalEq = new Float64Array(N);
+        for (let j = 0; j < bands.length; j++) {
+          if (bands[j].enabled === false) continue;
+          const coeffs = computeFilterCoeffs(
+            bands[j].fc, bands[j].gain, bands[j].q, sampleRate, bands[j].type || 'PK'
+          );
+          evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+            freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+          for (let i = 0; i < N; i++) totalEq[i] += effectBuf[i];
+        }
+        for (let i = 0; i < N; i++) {
+          let baselineDb = interpolateFn(curve, evalFreqs[i]);
+          let targetDb = interpolateFn(target, evalFreqs[i]);
+          let error = targetDb - (baselineDb + totalEq[i]);
+          sumSquaredError += error * error;
+        }
+        return Math.sqrt(sumSquaredError / N);
+      }
+
+      function runAutoEQ(curve, target, tolerance, maxBands, interpolateFn, sampleRate, phase1Bands) {
+        if (!curve || curve.length === 0 || !target || target.length === 0) return [];
+        const evalFreqs = generateEvaluationPoints();
+        const N = evalFreqs.length;
+        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+
+        const residualError = new Float64Array(N);
+        const targetDbArray = new Float64Array(N);
+        const baselineDbArray = new Float64Array(N);
+        for (let i = 0; i < N; i++) {
+          targetDbArray[i] = interpolateFn(target, evalFreqs[i]);
+          baselineDbArray[i] = interpolateFn(curve, evalFreqs[i]);
+          residualError[i] = targetDbArray[i] - baselineDbArray[i];
+        }
+
+        const weights = new Float64Array(N);
+        const minLogConst = Math.log10(20);
+        const maxLogConst = Math.log10(20000);
+        for (let i = 0; i < N; i++) {
+          let prevLog = i > 0 ? Math.log10(evalFreqs[i - 1]) : minLogConst;
+          let nextLog = i < N - 1 ? Math.log10(evalFreqs[i + 1]) : maxLogConst;
+          weights[i] = nextLog - prevLog;
+        }
+
+        const unitShapeCache = new Float64Array(N);
+        const effectBuf = new Float64Array(N);
+        const bands = [];
+
+        if (phase1Bands && phase1Bands.length > 0) {
+          for (let b of phase1Bands) bands.push({fc: b.fc, gain: b.gain, q: b.q, type: b.type});
+        } else {
+          _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, null);
+        }
+
+        _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate);
+
+        return bands
+          .map((b) => ({
+            fc: parseFloat(b.fc.toFixed(2)),
+            gain: parseFloat(b.gain.toFixed(2)),
+            q: parseFloat(b.q.toFixed(3)),
+            type: b.type,
+          }))
+          .sort((a, b) => a.fc - b.fc);
+      }
+
+      function runPhase1ForType(curve, target, tolerance, maxBands, interpolateFn, sampleRate, filterType) {
+        if (!curve || curve.length === 0 || !target || target.length === 0) return { bands: [], totalVariance: -Infinity };
+        const evalFreqs = generateEvaluationPoints();
+        const N = evalFreqs.length;
+        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+
+        const residualError = new Float64Array(N);
+        const targetDbArray = new Float64Array(N);
+        const baselineDbArray = new Float64Array(N);
+        for (let i = 0; i < N; i++) {
+          targetDbArray[i] = interpolateFn(target, evalFreqs[i]);
+          baselineDbArray[i] = interpolateFn(curve, evalFreqs[i]);
+          residualError[i] = targetDbArray[i] - baselineDbArray[i];
+        }
+
+        const weights = new Float64Array(N);
+        const minLogConst = Math.log10(20);
+        const maxLogConst = Math.log10(20000);
+        for (let i = 0; i < N; i++) {
+          let prevLog = i > 0 ? Math.log10(evalFreqs[i - 1]) : minLogConst;
+          let nextLog = i < N - 1 ? Math.log10(evalFreqs[i + 1]) : maxLogConst;
+          weights[i] = nextLog - prevLog;
+        }
+
+        const unitShapeCache = new Float64Array(N);
+        const effectBuf = new Float64Array(N);
+        const bands = [];
+        let totalVariance = _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, filterType);
+        return { bands, totalVariance };
+      }
+
+      function _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, singleType) {
+        let totalVariance = 0;
+        while (bands.length < maxBands) {
+          let worstIdx = -1;
+          let absoluteWorstError = 0;
+          for (let i = 0; i < N; i++) {
+            let absErr = Math.abs(residualError[i]);
+            if (absErr > absoluteWorstError) {
+              absoluteWorstError = absErr;
+            }
+          }
+          if (absoluteWorstError <= tolerance) break;
+          let maxError = 0;
+          for (let i = 0; i < N; i++) {
+            let absErr = Math.abs(residualError[i]);
+            if (absErr < absoluteWorstError) continue;
+            if (absErr > maxError) {
+              maxError = absErr;
+              worstIdx = i;
+            }
+          }
+          if (worstIdx === -1) break;
+
+          const centerFreq = Math.round(evalFreqs[worstIdx] * 100) / 100;
+          const targetGain = Math.round(residualError[worstIdx] * 100) / 100;
+          let bestMicroQ = 1.4;
+          let bestMicroGain = targetGain;
+          let bestMicroType = 'PK';
+          let maxMicroVariance = -Infinity;
+          const candidateTypes = singleType ? [singleType] : ['PK', 'LSC', 'HSC'];
+
+          for (let testType of candidateTypes) {
+            let currentBestQ = testType === 'PK' ? 1.4 : 0.28;
+            let currentBestGain = targetGain;
+            let currentMaxVariance = -Infinity;
+            let microStep = 100;
+            for (let iter = 0; iter < 50; iter++) {
+              let testTrajectories = [
+                currentBestQ,
+                Math.max(0.01, currentBestQ - microStep),
+                Math.min(100, currentBestQ + microStep),
+                Math.max(0.01, currentBestQ - microStep * 0.5),
+                Math.min(100, currentBestQ + microStep * 0.5),
+                Math.max(0.01, currentBestQ - microStep * 0.2),
+                Math.min(100, currentBestQ + microStep * 0.2),
+              ];
+              for (let qTest of testTrajectories) {
+                let qTestQuantized = Math.round(qTest * 1000) / 1000;
+                const coeffs = computeFilterCoeffs(centerFreq, 1.0, qTestQuantized, sampleRate, testType);
+                const { num, den } = evalAndAccumulate(
+                  coeffs, freqData.dz_re, freqData.dz_im,
+                  freqData.dz2_re, freqData.dz2_im, N,
+                  residualError, weights, unitShapeCache
+                );
+                let idealGain = den !== 0 ? num / den : targetGain;
+                idealGain = Math.max(-30.0, Math.min(30.0, idealGain));
+                idealGain = Math.round(idealGain * 100) / 100;
+                let reduction = 0;
+                for (let i = 0; i < N; i++) {
+                  let effect = idealGain * unitShapeCache[i];
+                  reduction +=
+                    (Math.abs(residualError[i]) -
+                      Math.abs(residualError[i] - effect)) *
+                    weights[i];
+                }
+                if (reduction > currentMaxVariance) {
+                  currentMaxVariance = reduction;
+                  currentBestQ = qTestQuantized;
+                  currentBestGain = idealGain;
+                }
+              }
+              microStep *= 0.5;
+            }
+            if (currentMaxVariance > maxMicroVariance) {
+              maxMicroVariance = currentMaxVariance;
+              bestMicroQ = currentBestQ;
+              bestMicroGain = currentBestGain;
+              bestMicroType = testType;
+            }
+          }
+
+          const microBand = {
+            fc: centerFreq,
+            gain: bestMicroGain,
+            q: bestMicroQ,
+            type: bestMicroType,
+          };
+          bands.push(microBand);
+          totalVariance += maxMicroVariance;
+          const coeffs = computeFilterCoeffs(
+            microBand.fc, microBand.gain, microBand.q, sampleRate, microBand.type
+          );
+          evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+            freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+          for (let i = 0; i < N; i++) {
+            residualError[i] -= effectBuf[i];
+          }
+        }
+        return totalVariance;
+      }
+
+      function _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate) {
+        if (bands.length > 1) {
+          const globalResidual = new Float64Array(N);
+          const bandEffectsCache = [];
+          const mutationWorkspaceVector = new Float64Array(N);
+          for (let k = 0; k < bands.length; k++) {
+            bandEffectsCache.push(new Float64Array(N));
+          }
+          for (let k = 0; k < bands.length; k++) {
+            const coeffs = computeFilterCoeffs(
+              bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k].type
+            );
+            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+              freqData.dz2_re, freqData.dz2_im, N, bandEffectsCache[k]);
+          }
+          for (let i = 0; i < N; i++) {
+            globalResidual[i] = targetDbArray[i] - baselineDbArray[i];
+            for (let k = 0; k < bands.length; k++) {
+              globalResidual[i] -= bandEffectsCache[k][i];
+            }
+          }
+
+          const evaluateSystemMutation = (bandIdx, testFc, testGain, testQ, currentType) => {
+            let scoreDelta = 0;
+            const quantizedFc = Math.round(testFc * 100) / 100;
+            const quantizedGain = Math.round(testGain * 100) / 100;
+            const quantizedQ = Math.round(testQ * 1000) / 1000;
+            const coeffs = computeFilterCoeffs(quantizedFc, quantizedGain, quantizedQ, sampleRate, currentType);
+            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+              freqData.dz2_re, freqData.dz2_im, N, mutationWorkspaceVector);
+            const currentCached = bandEffectsCache[bandIdx];
+            for (let i = 0; i < N; i++) {
+              let currentRes = globalResidual[i] + currentCached[i];
+              let newRes = currentRes - mutationWorkspaceVector[i];
+              scoreDelta +=
+                (newRes * newRes - globalResidual[i] * globalResidual[i]) *
+                weights[i];
+            }
+            return scoreDelta;
+          };
+
+          const applySystemMutation = (bandIdx, targetBand, newFc, newGain, newQ) => {
+            const currentCached = bandEffectsCache[bandIdx];
+            for (let i = 0; i < N; i++) {
+              let finalEffect = mutationWorkspaceVector[i];
+              globalResidual[i] += currentCached[i] - finalEffect;
+              currentCached[i] = finalEffect;
+            }
+            targetBand.fc = Math.round(newFc * 100) / 100;
+            targetBand.gain = Math.round(newGain * 100) / 100;
+            targetBand.q = Math.round(newQ * 1000) / 1000;
+          };
+
+          const bandSteps = bands.map(() => ({
+            fcScale: 1.0,
+            gainScale: 1.0,
+            qScale: 1.0,
+          }));
+          const globalIterations = 50;
+          const EPSILON = -1e-15;
+
+          for (let iter = 0; iter < globalIterations; iter++) {
+            let progress = iter / globalIterations;
+            let annealingDecay = Math.pow(1.0 - progress, 0.00000000000000001);
+            for (let j = 0; j < bands.length; j++) {
+              let b = bands[j];
+              let steps = bandSteps[j];
+              let deltaFc = b.fc * 0.01 * annealingDecay * steps.fcScale;
+              let deltaGain = 1.5 * annealingDecay * steps.gainScale;
+              let deltaQ = b.q * 0.125 * annealingDecay * steps.qScale;
+              let mutatedSomething = false;
+
+              if (deltaFc > 0.01) {
+                let testFcPlus = Math.max(20.0, Math.min(20000.0, b.fc + deltaFc));
+                let baseEval = evaluateSystemMutation(j, testFcPlus, b.gain, b.q, b.type);
+                let gainPlusEval = evaluateSystemMutation(j, testFcPlus, b.gain + deltaGain * 0.2, b.q, b.type);
+                let gainMinusEval = evaluateSystemMutation(j, testFcPlus, b.gain - deltaGain * 0.2, b.q, b.type);
+                let bestEval = baseEval;
+                let recGain = b.gain;
+                if (gainPlusEval < bestEval) { bestEval = gainPlusEval; recGain = b.gain + deltaGain * 0.2; }
+                if (gainMinusEval < bestEval) { bestEval = gainMinusEval; recGain = b.gain - deltaGain * 0.2; }
+                if (bestEval < EPSILON) {
+                  evaluateSystemMutation(j, testFcPlus, recGain, b.q, b.type);
+                  applySystemMutation(j, b, testFcPlus, Math.max(-30.0, Math.min(30.0, recGain)), b.q);
+                  steps.fcScale = Math.min(2.0, steps.fcScale * 1.5);
+                  mutatedSomething = true;
+                }
+                if (!mutatedSomething) {
+                  let testFcMinus = Math.max(20.0, Math.min(20000.0, b.fc - deltaFc));
+                  let baseEval = evaluateSystemMutation(j, testFcMinus, b.gain, b.q, b.type);
+                  let gainPlusEval = evaluateSystemMutation(j, testFcMinus, b.gain + deltaGain * 0.2, b.q, b.type);
+                  let gainMinusEval = evaluateSystemMutation(j, testFcMinus, b.gain - deltaGain * 0.2, b.q, b.type);
+                  let bestEval = baseEval;
+                  let recGain = b.gain;
+                  if (gainPlusEval < bestEval) { bestEval = gainPlusEval; recGain = b.gain + deltaGain * 0.2; }
+                  if (gainMinusEval < bestEval) { bestEval = gainMinusEval; recGain = b.gain - deltaGain * 0.2; }
+                  if (bestEval < EPSILON) {
+                    evaluateSystemMutation(j, testFcMinus, recGain, b.q, b.type);
+                    applySystemMutation(j, b, testFcMinus, Math.max(-30.0, Math.min(30.0, recGain)), b.q);
+                    steps.fcScale = Math.min(2.0, steps.fcScale * 1.5);
+                    mutatedSomething = true;
+                  }
+                }
+                if (!mutatedSomething) {
+                  steps.fcScale *= 0.5;
+                }
+              }
+
+              if (deltaQ > 0.001) {
+                let qMutated = false;
+                let qPlusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q + deltaQ, b.type);
+                let qMinusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q - deltaQ, b.type);
+                if (qPlusEval < EPSILON && qPlusEval < qMinusEval) {
+                  let targetQ = Math.min(100, b.q + deltaQ);
+                  let compGainEval = evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
+                  if (compGainEval < qPlusEval) {
+                    evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
+                    applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain + deltaGain * 0.2)), targetQ);
+                  } else {
+                    evaluateSystemMutation(j, b.fc, b.gain, targetQ, b.type);
+                    applySystemMutation(j, b, b.fc, b.gain, targetQ);
+                  }
+                  steps.qScale = Math.min(2.0, steps.qScale * 1.5);
+                  qMutated = true;
+                } else if (qMinusEval < EPSILON) {
+                  let targetQ = Math.max(0.01, b.q - deltaQ);
+                  let compGainEval = evaluateSystemMutation(j, b.fc, b.gain - deltaGain * 0.2, targetQ, b.type);
+                  if (compGainEval < qMinusEval) {
+                    evaluateSystemMutation(j, b.fc, b.gain - deltaGain * 0.2, targetQ, b.type);
+                    applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain - deltaGain * 0.2)), targetQ);
+                  } else {
+                    evaluateSystemMutation(j, b.fc, b.gain, targetQ, b.type);
+                    applySystemMutation(j, b, b.fc, b.gain, targetQ);
+                  }
+                  steps.qScale = Math.min(2.0, steps.qScale * 1.5);
+                  qMutated = true;
+                }
+                if (!qMutated) {
+                  steps.qScale *= 0.5;
+                }
+              }
+
+              if (deltaGain > 0.01) {
+                let gMutated = false;
+                let gPlusEval = evaluateSystemMutation(j, b.fc, b.gain + deltaGain, b.q, b.type);
+                let gMinusEval = evaluateSystemMutation(j, b.fc, b.gain - deltaGain, b.q, b.type);
+                if (gPlusEval < EPSILON && gPlusEval < gMinusEval) {
+                  evaluateSystemMutation(j, b.fc, b.gain + deltaGain, b.q, b.type);
+                  applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain + deltaGain)), b.q);
+                  steps.gainScale = Math.min(2.0, steps.gainScale * 1.5);
+                  gMutated = true;
+                } else if (gMinusEval < EPSILON) {
+                  evaluateSystemMutation(j, b.fc, b.gain - deltaGain, b.q, b.type);
+                  applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain - deltaGain)), b.q);
+                  steps.gainScale = Math.min(2.0, steps.gainScale * 1.5);
+                  gMutated = true;
+                }
+                if (!gMutated) {
+                  steps.gainScale *= 0.5;
+                }
+              }
+            }
+          }
+        }
+
+        const N2 = bands.length;
+        if (N2 > 0) {
+          const cdResidual = new Float64Array(N);
+          for (let k = 0; k < N2; k++) {
+            const coeffs = computeFilterCoeffs(
+              bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k].type || 'PK'
+            );
+            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+              freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+            for (let i = 0; i < N; i++) cdResidual[i] += effectBuf[i];
+          }
+          for (let i = 0; i < N; i++) {
+            cdResidual[i] = targetDbArray[i] - baselineDbArray[i] - cdResidual[i];
+          }
+          const globalCDIterations = 10;
+          for (let iter = 0; iter < globalCDIterations; iter++) {
+            for (let j = 0; j < N2; j++) {
+              let b = bands[j];
+              const coeffs = computeFilterCoeffs(b.fc, b.gain, b.q, sampleRate, b.type || 'PK');
+              evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+                freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+              for (let i = 0; i < N; i++) cdResidual[i] += effectBuf[i];
+
+              let lowGain = -30.0;
+              let highGain = 30.0;
+              const goldenRatio = 0.6180339887498949;
+              for (let step = 0; step < 20; step++) {
+                let gain1 = highGain - (highGain - lowGain) * goldenRatio;
+                let gain2 = lowGain + (highGain - lowGain) * goldenRatio;
+                let qGain1 = Math.round(gain1 * 100) / 100;
+                let qGain2 = Math.round(gain2 * 100) / 100;
+                const c1 = computeFilterCoeffs(b.fc, qGain1, b.q, sampleRate, b.type || 'PK');
+                const c2 = computeFilterCoeffs(b.fc, qGain2, b.q, sampleRate, b.type || 'PK');
+                evalFilterBatch(c1, freqData.dz_re, freqData.dz_im,
+                  freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+                let score1 = 0;
+                for (let i = 0; i < N; i++) {
+                  let err1 = cdResidual[i] - effectBuf[i];
+                  score1 += err1 * err1 * weights[i];
+                }
+                evalFilterBatch(c2, freqData.dz_re, freqData.dz_im,
+                  freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+                let score2 = 0;
+                for (let i = 0; i < N; i++) {
+                  let err2 = cdResidual[i] - effectBuf[i];
+                  score2 += err2 * err2 * weights[i];
+                }
+                if (score1 < score2) {
+                  highGain = gain2;
+                } else {
+                  lowGain = gain1;
+                }
+              }
+              b.gain = Math.round((lowGain + highGain) * 0.5 * 100) / 100;
+              const finalCoeffs = computeFilterCoeffs(b.fc, b.gain, b.q, sampleRate, b.type || 'PK');
+              evalFilterBatch(finalCoeffs, freqData.dz_re, freqData.dz_im,
+                freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+              for (let i = 0; i < N; i++) cdResidual[i] -= effectBuf[i];
+            }
+          }
+        }
+      }
+    </script>
+    <script>
+      const canvas = document.getElementById('eq-graph');
+      const ctx = canvas.getContext('2d');
+      let rawCurveData = null;
+      let rawTargetData = null;
+      let curveData = null;
+      let targetData = null;
+      let activeBands = [];
+      let currentTolerance = 0.0;
+      let maxBandsConstraint = 10;
+      let normFreq = 1000;
+      const MIN_FREQ = 20;
+      const MAX_FREQ = 20000;
+      const MIN_DB = 30;
+      const MAX_DB = 90;
+      const FILTER_TYPES = ['PK', 'LSC', 'HSC'];
+
+      function smoothLogarithmicCurve(rawData, octaveFraction) {
+        if (!rawData || rawData.length === 0) return null;
+        if (!octaveFraction || octaveFraction === 0) return [...rawData];
+        const smoothed = [];
+        const N = rawData.length;
+        const sigma = octaveFraction / (2 * Math.sqrt(2 * Math.log(2)));
+        for (let i = 0; i < N; i++) {
+          const currentHz = rawData[i].f;
+          const currentLog2 = Math.log2(currentHz);
+          let sumDb = 0;
+          let totalWeight = 0;
+          for (let j = 0; j < N; j++) {
+            const scanHz = rawData[j].f;
+            const scanLog2 = Math.log2(scanHz);
+            const octaveDist = scanLog2 - currentLog2;
+            let weight = Math.exp(-0.5 * Math.pow(octaveDist / sigma, 2));
+            sumDb += rawData[j].db * weight;
+            totalWeight += weight;
+          }
+          smoothed.push({
+            f: currentHz,
+            db: totalWeight > 0 ? sumDb / totalWeight : rawData[i].db,
+          });
+        }
+        return smoothed;
+      }
+      function normalizeData(data) {
+        if (!data || data.length === 0) return null;
+        const dbAtNorm = interpolate(data, normFreq);
+        const offset = 60 - dbAtNorm;
+        return data.map((pt) => ({ f: pt.f, db: pt.db + offset }));
+      }
+      function applySmoothingConfiguration() {
+        const mode = document.getElementById('smoothing-input').value;
+        const smoothTarget = document.getElementById('smoothing-target-input').value;
+        curveData = normalizeData(rawCurveData);
+        targetData = normalizeData(rawTargetData);
+        if (mode !== 'none') {
+          const parts = mode.split('/');
+          const numerator = parseFloat(parts[0]);
+          const denominator = parseFloat(parts[1]);
+          const fraction = numerator / denominator;
+          if (smoothTarget === 'curve' || smoothTarget === 'both') {
+            curveData = smoothLogarithmicCurve(curveData, fraction);
+          }
+          if (smoothTarget === 'target' || smoothTarget === 'both') {
+            targetData = smoothLogarithmicCurve(targetData, fraction);
+          }
+        }
+      }
+      function reparseAndRedraw() {
+        applySmoothingConfiguration();
+        renderAnchorList();
+        drawGraph();
+      }
+      document.getElementById('smoothing-input').addEventListener('change', () => {
+        applySmoothingConfiguration();
+        renderAnchorList();
+        drawGraph();
+      });
+      document
+        .getElementById('smoothing-target-input')
+        .addEventListener('change', () => {
+          applySmoothingConfiguration();
+          renderAnchorList();
+          drawGraph();
+        });
+      function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+        drawGraph();
+      }
+      window.addEventListener('resize', resizeCanvas);
+      function interpolate(data, freq) {
+        if (!data || data.length === 0) return 60;
+        if (freq <= data[0].f) return data[0].db;
+        if (freq >= data[data.length - 1].f) return data[data.length - 1].db;
+        let low = 0,
+          high = data.length - 1;
+        while (low <= high) {
+          let mid = Math.floor((low + high) / 2);
+          if (data[mid].f === freq) return data[mid].db;
+          if (data[mid].f < freq) low = mid + 1;
+          else high = mid - 1;
+          }
+        let left = data[high];
+        let right = data[low];
+        let t = (freq - left.f) / (right.f - left.f);
+        return left.db + t * (right.db - left.db);
+      }
+      const sampleRateInput = document.getElementById('sample-rate-input');
+      function getSelectedSampleRate() {
+        return parseInt(sampleRateInput.value) || 48000;
+      }
+      function getActiveFilterList() {
+        return activeBands.filter((b) => b.enabled !== false);
+      }
+      function getAccumulatedEqImpact(freq, filterList, currentSR) {
+        let total = 0;
+        filterList.forEach((b) => {
+          total += calculateFilterEffect(
+            freq,
+            b.fc,
+            b.gain,
+            b.q,
+            currentSR,
+            b.type || 'PK'
+          );
+        });
+        return total;
+      }
+      function clampBandsToNyquist() {
+        const currentSR = getSelectedSampleRate();
+        const nyquistLimit = currentSR / 2 - 1;
+        let changed = false;
+        activeBands.forEach((band) => {
+          if (band.fc >= nyquistLimit) {
+            band.fc = nyquistLimit;
+            changed = true;
+          }
+        });
+        return changed;
+      }
+      const PADDING_LEFT = 45;
+      const PADDING_RIGHT = 25;
+      const PADDING_TOP = 20;
+      const PADDING_BOTTOM = 35;
+      function getX(f) {
+        const logMin = Math.log10(MIN_FREQ);
+        const logMax = Math.log10(MAX_FREQ);
+        const logF = Math.log10(f);
+        const innerWidth = canvas.width - PADDING_LEFT - PADDING_RIGHT;
+        return PADDING_LEFT + ((logF - logMin) / (logMax - logMin)) * innerWidth;
+      }
+      function getY(db) {
+        const innerHeight = canvas.height - PADDING_TOP - PADDING_BOTTOM;
+        return (
+          PADDING_TOP +
+          innerHeight -
+          ((db - MIN_DB) / (MAX_DB - MIN_DB)) * innerHeight
+        );
+      }
+      function getFreqFromX(x) {
+        const logMin = Math.log10(MIN_FREQ);
+        const logMax = Math.log10(MAX_FREQ);
+        const innerWidth = canvas.width - PADDING_LEFT - PADDING_RIGHT;
+        const pct = (x - PADDING_LEFT) / innerWidth;
+        return Math.pow(10, logMin + pct * (logMax - logMin));
+      }
+      function getDbFromY(y) {
+        const innerHeight = canvas.height - PADDING_TOP - PADDING_BOTTOM;
+        const pct = 1 - (y - PADDING_TOP) / innerHeight;
+        return MIN_DB + pct * (MAX_DB - MIN_DB);
+      }
+      function parseFRFile(text) {
+        const lines = text.split('\n');
+        let parsed = [];
+        for (let line of lines) {
+          line = line.trim();
+          if (
+            !line ||
+            line.startsWith('//') ||
+            line.startsWith('*') ||
+            line.startsWith('#')
+          )
+            continue;
+          let parts = line.split(/[\s,]+/);
+          if (parts.length >= 2) {
+            let f = parseFloat(parts[0]);
+            let db = parseFloat(parts[1]);
+            if (!isNaN(f) && !isNaN(db)) parsed.push({ f, db });
+          }
+        }
+        if (parsed.length === 0) return null;
+        parsed.sort((a, b) => a.f - b.f);
+        return parsed;
+      }
+      function triggerAutoEQ() {
+        if (!curveData || !targetData) return;
+        const currentSR = getSelectedSampleRate();
+        clampBandsToNyquist();
+        autoEqBtn.disabled = true;
+        autoEqBtn.textContent = 'Running...';
+        autoEqBtn.classList.add('btn-trigger-running');
+        setTimeout(() => {
+          activeBands = runAutoEQ(
+            curveData,
+            targetData,
+            currentTolerance,
+            maxBandsConstraint,
+            interpolate,
+            currentSR
+          );
+          activeBands.forEach((b) => (b.enabled = true));
+          autoEqBtn.disabled = false;
+          autoEqBtn.textContent = 'Run AutoEQ';
+          autoEqBtn.classList.remove('btn-trigger-running');
+          renderAnchorList();
+          drawGraph();
+        }, 0);
+      }
+      function updateAccuracyDisplay() {
+        const accuracyElement = document.getElementById('accuracy-rating');
+        const currentSR = getSelectedSampleRate();
+        if (curveData && targetData) {
+          const activeFilters = getActiveFilterList();
+          const currentErrorRMSE = calculateRMSE(
+            curveData,
+            targetData,
+            activeFilters,
+            interpolate,
+            currentSR
+          );
+          let accuracyScore = 100 * (1 - currentErrorRMSE / 12);
+          accuracyScore = Math.max(0, Math.min(100, accuracyScore));
+          accuracyElement.innerText = `Accuracy: ${accuracyScore.toFixed(
+            2
+          )}% (±${currentErrorRMSE.toFixed(2)}dB)`;
+          accuracyElement.classList.remove(
+            'status-excellent',
+            'status-warning',
+            'status-critical',
+            'status-disabled'
+          );
+          if (accuracyScore >= 97) {
+            accuracyElement.classList.add('status-excellent');
+            accuracyElement.style.color = '#10b981';
+          } else if (accuracyScore >= 90) {
+            accuracyElement.classList.add('status-warning');
+            accuracyElement.style.color = '#eab308';
+          } else {
+            accuracyElement.classList.add('status-critical');
+            accuracyElement.style.color = '#ef4444';
+          }
+        } else {
+          accuracyElement.innerText = 'Accuracy: --';
+          accuracyElement.classList.remove(
+            'status-excellent',
+            'status-warning',
+            'status-critical'
+          );
+          accuracyElement.classList.add('status-disabled');
+          accuracyElement.style.color = '#757575';
+        }
+      }
+      function renderAnchorList() {
+        const container = document.getElementById('anchor-list');
+        container.innerHTML = '';
+        updateAccuracyDisplay();
+        activeBands.forEach((band, idx) => {
+          const row = document.createElement('div');
+          row.className = 'band-row';
+          if (!band.type) band.type = 'PK';
+          if (band.enabled === undefined) band.enabled = true;
+          if (!band.enabled) row.classList.add('band-disabled');
+          const eyeSvg = band.enabled
+            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>'
+            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 0 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+          row.innerHTML = `
+            <div class="band-top">
+              <button class="eye-toggle ${band.enabled ? '' : 'eye-disabled'}" data-idx="${idx}" title="${band.enabled ? 'Disable' : 'Enable'} band">${eyeSvg}</button>
+              <select class="type-select filter-dropdown" data-idx="${idx}" data-field="type">
+                <option value="PK" ${band.type === 'PK' ? 'selected' : ''}>PK</option>
+                <option value="LSC" ${band.type === 'LSC' ? 'selected' : ''}>LSC</option>
+                <option value="HSC" ${band.type === 'HSC' ? 'selected' : ''}>HSC</option>
+              </select>
+              <input type="number" class="freq-input filter-num-input" value="${band.fc.toFixed(2)}" step="0.01" data-idx="${idx}" data-field="fc">
+              <button class="del-btn" data-idx="${idx}">X</button>
+            </div>
+            <div class="band-values">
+              <input type="number" class="gain-input filter-num-input" value="${band.gain.toFixed(2)}" step="0.01" data-idx="${idx}" data-field="gain">
+              <input type="number" class="q-input filter-num-input" value="${band.q.toFixed(3)}" step="0.001" data-idx="${idx}" data-field="q">
+            </div>
+          `;
+          container.appendChild(row);
+        });
+        container.querySelectorAll('input, select').forEach((element) => {
+          element.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.getAttribute('data-idx'));
+            const field = e.target.getAttribute('data-field');
+            const loopSR = getSelectedSampleRate();
+            const nyquistLimit = loopSR / 2 - 1;
+            if (field === 'type') {
+              activeBands[idx][field] = e.target.value;
+            } else {
+              let val = parseFloat(e.target.value) || 0;
+              if (field === 'fc') {
+                val = Math.max(20, Math.min(nyquistLimit, val));
+                e.target.value = val.toFixed(2);
+              }
+              if (field === 'q') {
+                val = Math.max(0.01, Math.min(100, val));
+                e.target.value = val.toFixed(3);
+              }
+              if (field === 'gain') {
+                val = Math.max(-30, Math.min(30, val));
+                e.target.value = val.toFixed(2);
+              }
+              activeBands[idx][field] = val;
+            }
+            updateAccuracyDisplay();
+            drawGraph();
+          });
+        });
+        container.querySelectorAll('.del-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.getAttribute('data-idx'));
+            activeBands.splice(idx, 1);
+            renderAnchorList();
+            drawGraph();
+          });
+        });
+        container.querySelectorAll('.eye-toggle').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.currentTarget.getAttribute('data-idx'));
+            activeBands[idx].enabled = !activeBands[idx].enabled;
+            renderAnchorList();
+            drawGraph();
+          });
+        });
+      }
+      sampleRateInput.addEventListener('change', () => {
+        clampBandsToNyquist();
+        if (curveData && targetData) {
+          renderAnchorList();
+        }
+        drawGraph();
+      });
+      document.getElementById('add-band-btn').addEventListener('click', () => {
+        activeBands.push({ fc: 1000, gain: 0.0, q: 1.0, type: 'PK', enabled: true });
+        renderAnchorList();
+        drawGraph();
+      });
+      document.getElementById('file-curve').addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          rawCurveData = parseFRFile(ev.target.result);
+          applySmoothingConfiguration();
+          renderAnchorList();
+          drawGraph();
+        };
+        if (e.target.files[0]) reader.readAsText(e.target.files[0]);
+      });
+      document.getElementById('file-target').addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          rawTargetData = parseFRFile(ev.target.result);
+          applySmoothingConfiguration();
+          renderAnchorList();
+          drawGraph();
+        };
+        if (e.target.files[0]) reader.readAsText(e.target.files[0]);
+      });
+      const bandSlider = document.getElementById('band-slider');
+      const sliderVal = document.getElementById('slider-val');
+      const autoEqBtn = document.getElementById('autoeq-trigger-btn');
+      bandSlider.addEventListener('input', (e) => {
+        maxBandsConstraint = parseInt(e.target.value);
+        sliderVal.innerText = maxBandsConstraint;
+      });
+      autoEqBtn.addEventListener('click', () => {
+        if (!curveData || !targetData) return;
+        triggerAutoEQ();
+      });
+      const normFreqInput = document.getElementById('norm-freq-input');
+      normFreqInput.addEventListener('input', (e) => {
+        let val = parseInt(e.target.value) || 1000;
+        val = Math.max(20, Math.min(20000, val));
+        normFreq = val;
+        reparseAndRedraw();
+      });
+
+      let dragState = null;
+      let hoverBandIdx = -1;
+      const HIT_RADIUS = 12;
+
+      function getCurveValueAtFreq(freq) {
+        if (!curveData || curveData.length === 0) return 60;
+        return interpolate(curveData, freq);
+      }
+
+      function getBandAtPosition(mx, my) {
+        for (let i = activeBands.length - 1; i >= 0; i--) {
+          const band = activeBands[i];
+          if (band.enabled === false) continue;
+          const bx = getX(band.fc);
+          const by = getY(getCurveValueAtFreq(band.fc) + band.gain);
+          const dx = mx - bx;
+          const dy = my - by;
+          if (dx * dx + dy * dy <= HIT_RADIUS * HIT_RADIUS) {
+            return i;
+          }
+        }
+        return -1;
+      }
+
+      function isNearBlueCurve(mx, my) {
+        if (!curveData) return false;
+        const f = getFreqFromX(mx);
+        if (f < curveData[0].f || f > curveData[curveData.length - 1].f) return false;
+        const curveDb = interpolate(curveData, f);
+        const curveY = getY(curveDb);
+        return Math.abs(my - curveY) <= 15;
+      }
+
+      canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 1) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const idx = getBandAtPosition(mx, my);
+        if (idx >= 0) {
+          dragState = { idx, startX: mx, startY: my, origFc: activeBands[idx].fc, origGain: activeBands[idx].gain };
+          canvas.style.cursor = 'grabbing';
+          e.preventDefault();
+        } else if (isNearBlueCurve(mx, my)) {
+          const currentSR = getSelectedSampleRate();
+          const nyquistLimit = currentSR / 2 - 1;
+          let newFc = getFreqFromX(mx);
+          newFc = Math.max(20, Math.min(nyquistLimit, newFc));
+          const curveAtFc = getCurveValueAtFreq(newFc);
+          let newGain = getDbFromY(my) - curveAtFc;
+          newGain = Math.max(-30, Math.min(30, newGain));
+          activeBands.push({
+            fc: Math.round(newFc * 100) / 100,
+            gain: Math.round(newGain * 100) / 100,
+            q: 1.0,
+            type: 'PK',
+            enabled: true,
+          });
+          const newIdx = activeBands.length - 1;
+          dragState = { idx: newIdx, startX: mx, startY: my, origFc: activeBands[newIdx].fc, origGain: activeBands[newIdx].gain };
+          renderAnchorList();
+          drawGraph();
+          canvas.style.cursor = 'grabbing';
+          e.preventDefault();
+        }
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        if (dragState) {
+          const band = activeBands[dragState.idx];
+          const currentSR = getSelectedSampleRate();
+          const nyquistLimit = currentSR / 2 - 1;
+          let newFc = getFreqFromX(mx);
+          newFc = Math.max(20, Math.min(nyquistLimit, newFc));
+          const curveAtFc = getCurveValueAtFreq(newFc);
+          let newGain = getDbFromY(my) - curveAtFc;
+          newGain = Math.max(-30, Math.min(30, newGain));
+          band.fc = Math.round(newFc * 100) / 100;
+          band.gain = Math.round(newGain * 100) / 100;
+          renderAnchorList();
+          drawGraph();
+        } else {
+          const idx = getBandAtPosition(mx, my);
+          if (idx !== hoverBandIdx) {
+            hoverBandIdx = idx;
+            canvas.style.cursor = idx >= 0 ? 'grab' : 'default';
+          }
+        }
+      });
+
+      canvas.addEventListener('mouseup', (e) => {
+        if (e.button !== 0) return;
+        if (dragState) {
+          dragState = null;
+          canvas.style.cursor = hoverBandIdx >= 0 ? 'grab' : 'default';
+        }
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        hoverBandIdx = -1;
+        if (!dragState) canvas.style.cursor = 'default';
+      });
+
+      canvas.addEventListener('contextmenu', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const idx = getBandAtPosition(mx, my);
+        if (idx >= 0) {
+          e.preventDefault();
+          activeBands.splice(idx, 1);
+          if (dragState && dragState.idx === idx) dragState = null;
+          renderAnchorList();
+          drawGraph();
+        }
+      });
+
+      canvas.addEventListener('wheel', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        let idx = getBandAtPosition(mx, my);
+        if (idx < 0 && dragState) idx = dragState.idx;
+        if (idx >= 0) {
+          e.preventDefault();
+          const delta = e.deltaY < 0 ? -0.05 : 0.05;
+          let newQ = activeBands[idx].q + delta;
+          newQ = Math.max(0.01, Math.min(100, newQ));
+          activeBands[idx].q = Math.round(newQ * 1000) / 1000;
+          renderAnchorList();
+          drawGraph();
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 1) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        let idx = getBandAtPosition(mx, my);
+        if (idx < 0 && dragState) idx = dragState.idx;
+        if (idx >= 0) {
+          e.preventDefault();
+          const currentType = activeBands[idx].type || 'PK';
+          const typeIdx = FILTER_TYPES.indexOf(currentType);
+          const nextType = FILTER_TYPES[(typeIdx + 1) % FILTER_TYPES.length];
+          activeBands[idx].type = nextType;
+          renderAnchorList();
+          drawGraph();
+        }
+      });
+
+      function drawGraph() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const innerWidth = canvas.width - PADDING_LEFT - PADDING_RIGHT;
+        const innerHeight = canvas.height - PADDING_TOP - PADDING_BOTTOM;
+        const graphRightEdge = canvas.width - PADDING_RIGHT;
+        const graphBottomEdge = canvas.height - PADDING_BOTTOM;
+        const currentSR = getSelectedSampleRate();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#161616';
+        ctx.fillStyle = '#666';
+        ctx.font =
+          '10px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.setLineDash([]);
+        for (let db = MIN_DB; db <= MAX_DB; db += 5) {
+          let y = Math.round(getY(db)) + 0.5;
+          ctx.beginPath();
+          ctx.moveTo(PADDING_LEFT, y);
+          ctx.lineTo(graphRightEdge, y);
+          ctx.stroke();
+          ctx.textAlign = 'right';
+          ctx.fillText(`${db}`, PADDING_LEFT - 10, y + 4);
+        }
+        const decades = [
+          { start: 20, end: 100, step: 10 },
+          { start: 100, end: 1000, step: 100 },
+          { start: 1000, end: 10000, step: 1000 },
+          { start: 10000, end: 20000, step: 1000 },
+        ];
+        const textLabels = [
+          20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700, 800, 900,
+          1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 15000, 20000,
+        ];
+        decades.forEach((decade) => {
+          for (let f = decade.start; f <= decade.end; f += decade.step) {
+            if (f > MAX_FREQ) break;
+            let x = Math.round(getX(f)) + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(x, PADDING_TOP);
+            ctx.lineTo(x, graphBottomEdge);
+            ctx.stroke();
+            if (textLabels.includes(f)) {
+              let label = f >= 1000 ? `${f / 1000}k` : f;
+              ctx.textAlign = 'center';
+              ctx.fillText(label, x, graphBottomEdge + 18);
+            }
+          }
+        });
+        ctx.strokeStyle = '#252525';
+        ctx.strokeRect(
+          Math.round(PADDING_LEFT) + 0.5,
+          Math.round(PADDING_TOP) + 0.5,
+          Math.round(innerWidth),
+          Math.round(innerHeight)
+        );
+        if (targetData) {
+          ctx.strokeStyle = '#757575';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(getX(targetData[0].f), getY(targetData[0].db));
+          for (let i = 1; i < targetData.length; i++)
+            ctx.lineTo(getX(targetData[i].f), getY(targetData[i].db));
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        if (targetData && currentTolerance) {
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.04)';
+          ctx.beginPath();
+          for (let i = 0; i < targetData.length; i++) {
+            ctx.lineTo(
+              getX(targetData[i].f),
+              getY(targetData[i].db + currentTolerance)
+            );
+          }
+          for (let i = targetData.length - 1; i >= 0; i--) {
+            ctx.lineTo(
+              getX(targetData[i].f),
+              getY(targetData[i].db - currentTolerance)
+            );
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (curveData) {
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(getX(curveData[0].f), getY(curveData[0].db));
+          for (let i = 1; i < curveData.length; i++)
+            ctx.lineTo(getX(curveData[i].f), getY(curveData[i].db));
+          ctx.stroke();
+        }
+        const activeFilters = getActiveFilterList();
+        if (curveData && targetData && activeFilters.length > 0) {
+          const logMin = Math.log10(MIN_FREQ);
+          const logMax = Math.log10(MAX_FREQ);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (let xCoord = PADDING_LEFT; xCoord <= graphRightEdge; xCoord++) {
+            const pct = (xCoord - PADDING_LEFT) / innerWidth;
+            const currentF = Math.pow(10, logMin + pct * (logMax - logMin));
+            let baselineDb = interpolate(curveData, currentF);
+            let totalEqImpact = getAccumulatedEqImpact(
+              currentF,
+              activeFilters,
+              currentSR
+            );
+            let finalRenderedDb = baselineDb + totalEqImpact;
+            if (xCoord === PADDING_LEFT) ctx.moveTo(xCoord, getY(finalRenderedDb));
+            else ctx.lineTo(xCoord, getY(finalRenderedDb));
+          }
+          ctx.stroke();
+        }
+
+        activeBands.forEach((band, idx) => {
+          if (band.enabled === false) return;
+          drawBandNode(band, idx, currentSR, graphRightEdge, graphBottomEdge);
+        });
+      }
+
+      function drawBandNode(band, idx, currentSR, graphRightEdge, graphBottomEdge) {
+        const cx = getX(band.fc);
+        const curveBaseDb = getCurveValueAtFreq(band.fc);
+        const cy = getY(curveBaseDb + band.gain);
+
+        const innerWidth = canvas.width - PADDING_LEFT - PADDING_RIGHT;
+        const previewWidth = innerWidth / (4 * Math.max(band.q, 0.01));
+        const halfWidth = previewWidth / 2;
+        const startX = Math.max(PADDING_LEFT, cx - halfWidth);
+        const endX = Math.min(canvas.width - PADDING_RIGHT, cx + halfWidth);
+        const startFreq = getFreqFromX(startX);
+        const endFreq = getFreqFromX(endX);
+        const samplePoints = 360;
+        const shapePoints = [];
+        const nodeCenterY = getY(curveBaseDb + band.gain);
+        const centerEffect = calculateFilterEffect(
+          band.fc,
+          band.fc,
+          band.gain,
+          band.q,
+          currentSR,
+          band.type || 'PK'
+        );
+        const centerShapeY = getY(60 + centerEffect);
+        for (let i = 0; i <= samplePoints; i++) {
+          const pct = i / samplePoints;
+          const f = Math.pow(
+            10,
+            Math.log10(startFreq) +
+              pct * (Math.log10(endFreq) - Math.log10(startFreq))
+          );
+          const effect = calculateFilterEffect(
+            f,
+            band.fc,
+            band.gain,
+            band.q,
+            currentSR,
+            band.type || 'PK'
+          );
+          const shapeY = getY(60 + effect);
+          shapePoints.push({ x: getX(f), y: nodeCenterY + (shapeY - centerShapeY) });
+        }
+
+        const nodeColor = band.type === 'LSC' ? '#3b82f6' : band.type === 'HSC' ? '#f59e0b' : '#10b981';
+
+        ctx.strokeStyle = nodeColor + '55';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(shapePoints[0].x, shapePoints[0].y);
+        for (let p of shapePoints) {
+          ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+
+        const isHovered = hoverBandIdx === idx;
+        const isDragging = dragState && dragState.idx === idx;
+        const radius = isHovered || isDragging ? 8 : 6;
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#111';
+        ctx.fill();
+        ctx.strokeStyle = nodeColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = nodeColor;
+        ctx.fill();
+      }
+
+      function calculateAutomatedPreamp() {
+        const activeFilters = getActiveFilterList();
+        if (!activeFilters || activeFilters.length === 0) return 0.0;
+        let maxGainFound = -Infinity;
+        const scanResolutionSteps = 1000;
+        const logMin = Math.log10(MIN_FREQ);
+        const logMax = Math.log10(MAX_FREQ);
+        const currentSR = getSelectedSampleRate();
+        for (let i = 0; i <= scanResolutionSteps; i++) {
+          const pct = i / scanResolutionSteps;
+          const currentF = Math.pow(10, logMin + pct * (logMax - logMin));
+          const accumulatedGain = getAccumulatedEqImpact(
+            currentF,
+            activeFilters,
+            currentSR
+          );
+          if (accumulatedGain > maxGainFound) {
+            maxGainFound = accumulatedGain;
+          }
+        }
+        return -maxGainFound;
+      }
+      document.getElementById('export-eq-btn').addEventListener('click', () => {
+        const preampValue = calculateAutomatedPreamp();
+        let apoConfigText = `Preamp: ${preampValue.toFixed(1)} dB\n`;
+        activeBands.forEach((band, index) => {
+          const type = band.type || 'PK';
+          const fc = band.fc.toFixed(2);
+          const gain = band.gain.toFixed(2);
+          const q = band.q.toFixed(3);
+          const onOff = band.enabled === false ? 'OFF' : 'ON';
+          apoConfigText += `Filter ${
+            index + 1
+          }: ${onOff} ${type} Fc ${fc} Hz Gain ${gain} dB Q ${q}\n`;
+        });
+        const blobData = new Blob([apoConfigText], {
+          type: 'text/plain;charset=utf-8',
+        });
+        const downloadUrl = URL.createObjectURL(blobData);
+        const virtualLink = document.createElement('a');
+        virtualLink.href = downloadUrl;
+        virtualLink.download = 'EQ.txt';
+        document.body.appendChild(virtualLink);
+        virtualLink.click();
+        document.body.removeChild(virtualLink);
+        URL.revokeObjectURL(downloadUrl);
+      });
+      document.getElementById('export-curve-btn').addEventListener('click', () => {
+        let curveText = '';
+        const currentSR = getSelectedSampleRate();
+        const activeFilters = getActiveFilterList();
+        curveData.forEach((pt) => {
+          const currentF = pt.f;
+          const baselineDb = pt.db;
+          const totalEqImpact = getAccumulatedEqImpact(
+            currentF,
+            activeFilters,
+            currentSR
+          );
+          const finalRenderedDb = baselineDb + totalEqImpact;
+          curveText += `${currentF.toFixed(2)} ${finalRenderedDb.toFixed(2)}\n`;
+        });
+        const blobData = new Blob([curveText], {
+          type: 'text/plain;charset=utf-8',
+        });
+        const downloadUrl = URL.createObjectURL(blobData);
+        const virtualLink = document.createElement('a');
+        virtualLink.href = downloadUrl;
+        virtualLink.download = 'Equalized_Curve.txt';
+        document.body.appendChild(virtualLink);
+        virtualLink.click();
+        document.body.removeChild(virtualLink);
+        URL.revokeObjectURL(downloadUrl);
+      });
+      renderAnchorList();
+      resizeCanvas();
+    </script>
+  </body>
+</html>
