@@ -659,386 +659,317 @@
     <script>
       const EVAL_POINT_COUNT = 1000;
 
-      function generateEvaluationPoints() {
-        const points = new Float64Array(EVAL_POINT_COUNT);
-        const minLog = Math.log10(20);
-        const maxLog = Math.log10(20000);
-        const span = maxLog - minLog;
-        points[0] = 20.0;
-        points[EVAL_POINT_COUNT - 1] = 20000.0;
-        for (let i = 1; i < EVAL_POINT_COUNT - 1; i++) {
-          points[i] = Math.pow(10, minLog + (i / (EVAL_POINT_COUNT - 1)) * span);
-        }
-        return points;
-      }
+function generateEvaluationPoints() {
+  const points = new Float64Array(EVAL_POINT_COUNT);
+  const minLog = Math.log10(20);
+  const maxLog = Math.log10(20000);
+  const span = maxLog - minLog;
+  points[0] = 20.0;
+  points[EVAL_POINT_COUNT - 1] = 20000.0;
+  for (let i = 1; i < EVAL_POINT_COUNT - 1; i++) {
+    points[i] = Math.pow(10, minLog + (i / (EVAL_POINT_COUNT - 1)) * span);
+  }
+  return points;
+}
 
-      function calculateRMSE(curve, target, bands, interpolateFn, sampleRate) {
-        const evalFreqs = generateEvaluationPoints();
-        const N = evalFreqs.length;
-        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
-        let sumSquaredError = 0;
-        const effectBuf = new Float64Array(N);
-        const totalEq = new Float64Array(N);
-        for (let j = 0; j < bands.length; j++) {
-          if (bands[j].enabled === false) continue;
-          const coeffs = computeFilterCoeffs(
-            bands[j].fc, bands[j].gain, bands[j].q, sampleRate, bands[j].type || 'PK'
+function calculateRMSE(curve, target, bands, interpolateFn, sampleRate) {
+  const evalFreqs = generateEvaluationPoints();
+  const N = evalFreqs.length;
+  const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+  let sumSquaredError = 0;
+  const effectBuf = new Float64Array(N);
+  const totalEq = new Float64Array(N);
+  for (let j = 0; j < bands.length; j++) {
+    if (bands[j].enabled === false) continue;
+    const coeffs = computeFilterCoeffs(
+      bands[j].fc, bands[j].gain, bands[j].q, sampleRate, bands[j].type || 'PK'
+    );
+    evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+    for (let i = 0; i < N; i++) totalEq[i] += effectBuf[i];
+  }
+  for (let i = 0; i < N; i++) {
+    let baselineDb = interpolateFn(curve, evalFreqs[i]);
+    let targetDb = interpolateFn(target, evalFreqs[i]);
+    let error = targetDb - (baselineDb + totalEq[i]);
+    sumSquaredError += error * error;
+  }
+  return Math.sqrt(sumSquaredError / N);
+}
+
+function runAutoEQ(curve, target, tolerance, maxBands, interpolateFn, sampleRate) {
+  if (!curve || curve.length === 0 || !target || target.length === 0) return [];
+  const evalFreqs = generateEvaluationPoints();
+  const N = evalFreqs.length;
+  const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+
+  const residualError = new Float64Array(N);
+  const targetDbArray = new Float64Array(N);
+  const baselineDbArray = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    targetDbArray[i] = interpolateFn(target, evalFreqs[i]);
+    baselineDbArray[i] = interpolateFn(curve, evalFreqs[i]);
+    residualError[i] = targetDbArray[i] - baselineDbArray[i];
+  }
+
+  const weights = new Float64Array(N);
+  const minLogConst = Math.log10(20);
+  const maxLogConst = Math.log10(20000);
+  for (let i = 0; i < N; i++) {
+    let prevLog = i > 0 ? Math.log10(evalFreqs[i - 1]) : minLogConst;
+    let nextLog = i < N - 1 ? Math.log10(evalFreqs[i + 1]) : maxLogConst;
+    weights[i] = nextLog - prevLog;
+  }
+
+  const unitShapeCache = new Float64Array(N);
+  const effectBuf = new Float64Array(N);
+  const bands = [];
+
+  _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate);
+  _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate);
+
+  return bands
+    .map((b) => ({
+      fc: parseFloat(b.fc.toFixed(2)),
+      gain: parseFloat(b.gain.toFixed(2)),
+      q: parseFloat(clampFilterQ(b.q).toFixed(3)),
+      type: b.type,
+      enabled: true
+    }))
+    .sort((a, b) => a.fc - b.fc);
+}
+
+function _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate) {
+  const candidateQs = [0.35, 0.7, 1.4, 2.8, 5.5];
+  const gridCount = 48;
+  const gridFreqs = new Float64Array(gridCount);
+  const minLog = Math.log10(25);
+  const maxLog = Math.log10(18000);
+  for (let i = 0; i < gridCount; i++) {
+    gridFreqs[i] = Math.pow(10, minLog + (i / (gridCount - 1)) * (maxLog - minLog));
+  }
+
+  while (bands.length < maxBands) {
+    let maxAbsErr = 0;
+    for (let i = 0; i < N; i++) {
+      let err = Math.abs(residualError[i]);
+      if (err > maxAbsErr) maxAbsErr = err;
+    }
+    if (maxAbsErr <= tolerance) break;
+
+    // Collect candidate center frequencies (local extrema + full log spectrum grid)
+    const candidateFrequencies = [];
+    for (let i = 1; i < N - 1; i++) {
+      if ((residualError[i] > residualError[i - 1] && residualError[i] >= residualError[i + 1]) ||
+          (residualError[i] < residualError[i - 1] && residualError[i] <= residualError[i + 1])) {
+        candidateFrequencies.push(evalFreqs[i]);
+      }
+    }
+    for (let i = 0; i < gridCount; i++) {
+      candidateFrequencies.push(gridFreqs[i]);
+    }
+
+    let bestFc = 1000;
+    let bestGain = 0;
+    let bestQ = 1.4;
+    let bestType = 'PK';
+    let bestVarianceReduction = -Infinity;
+
+    for (let fc of candidateFrequencies) {
+      if (fc >= sampleRate / 2 - 10) continue;
+      const testTypes = ['PK'];
+      if (fc <= 600) testTypes.push('LSC');
+      if (fc >= 2000) testTypes.push('HSC');
+
+      for (let testType of testTypes) {
+        const qList = testType === 'PK' ? candidateQs : [0.5, 0.71, 1.0];
+        for (let testQ of qList) {
+          const coeffs = computeFilterCoeffs(fc, 1.0, testQ, sampleRate, testType);
+          const { num, den } = evalAndAccumulate(
+            coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im,
+            N, residualError, weights, unitShapeCache
           );
-          evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
-            freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-          for (let i = 0; i < N; i++) totalEq[i] += effectBuf[i];
+          if (den <= 1e-12) continue;
+          let idealGain = num / den;
+          idealGain = Math.max(-30.0, Math.min(30.0, idealGain));
+          if (Math.abs(idealGain) < 0.05) continue;
+
+          // Variance reduction = 2 * G * num - G^2 * den
+          const varianceRed = 2 * idealGain * num - idealGain * idealGain * den;
+          if (varianceRed > bestVarianceReduction) {
+            bestVarianceReduction = varianceRed;
+            bestFc = fc;
+            bestGain = idealGain;
+            bestQ = testQ;
+            bestType = testType;
+          }
         }
-        for (let i = 0; i < N; i++) {
-          let baselineDb = interpolateFn(curve, evalFreqs[i]);
-          let targetDb = interpolateFn(target, evalFreqs[i]);
-          let error = targetDb - (baselineDb + totalEq[i]);
-          sumSquaredError += error * error;
-        }
-        return Math.sqrt(sumSquaredError / N);
       }
+    }
 
-      function runAutoEQ(curve, target, tolerance, maxBands, interpolateFn, sampleRate, phase1Bands) {
-        if (!curve || curve.length === 0 || !target || target.length === 0) return [];
-        const evalFreqs = generateEvaluationPoints();
-        const N = evalFreqs.length;
-        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+    if (bestVarianceReduction <= 1e-6) break;
 
-        const residualError = new Float64Array(N);
-        const targetDbArray = new Float64Array(N);
-        const baselineDbArray = new Float64Array(N);
-        for (let i = 0; i < N; i++) {
-          targetDbArray[i] = interpolateFn(target, evalFreqs[i]);
-          baselineDbArray[i] = interpolateFn(curve, evalFreqs[i]);
-          residualError[i] = targetDbArray[i] - baselineDbArray[i];
+    // Refine Q around best candidate
+    let currentBestQ = bestQ;
+    let currentBestGain = bestGain;
+    let currentMaxVariance = bestVarianceReduction;
+    for (let iter = 0; iter < 10; iter++) {
+      const testQList = [currentBestQ * 0.8, currentBestQ * 0.9, currentBestQ, currentBestQ * 1.1, currentBestQ * 1.25];
+      for (let qCand of testQList) {
+        qCand = clampFilterQ(qCand);
+        const coeffs = computeFilterCoeffs(bestFc, 1.0, qCand, sampleRate, bestType);
+        const { num, den } = evalAndAccumulate(
+          coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im,
+          N, residualError, weights, unitShapeCache
+        );
+        if (den <= 1e-12) continue;
+        let gainCand = Math.max(-30.0, Math.min(30.0, num / den));
+        let varRed = 2 * gainCand * num - gainCand * gainCand * den;
+        if (varRed > currentMaxVariance) {
+          currentMaxVariance = varRed;
+          currentBestQ = qCand;
+          currentBestGain = gainCand;
         }
+      }
+    }
 
-        const weights = new Float64Array(N);
-        const minLogConst = Math.log10(20);
-        const maxLogConst = Math.log10(20000);
-        for (let i = 0; i < N; i++) {
-          let prevLog = i > 0 ? Math.log10(evalFreqs[i - 1]) : minLogConst;
-          let nextLog = i < N - 1 ? Math.log10(evalFreqs[i + 1]) : maxLogConst;
-          weights[i] = nextLog - prevLog;
-        }
+    const microBand = {
+      fc: Math.round(bestFc * 100) / 100,
+      gain: Math.round(currentBestGain * 100) / 100,
+      q: Math.round(currentBestQ * 1000) / 1000,
+      type: bestType,
+      enabled: true
+    };
+    bands.push(microBand);
 
-        const unitShapeCache = new Float64Array(N);
-        const effectBuf = new Float64Array(N);
-        const bands = [];
+    const coeffs = computeFilterCoeffs(microBand.fc, microBand.gain, microBand.q, sampleRate, microBand.type);
+    evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+    for (let i = 0; i < N; i++) {
+      residualError[i] -= effectBuf[i];
+    }
+  }
+}
 
-        if (phase1Bands && phase1Bands.length > 0) {
-          for (let b of phase1Bands) bands.push({fc: b.fc, gain: b.gain, q: b.q, type: b.type});
+function _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate) {
+  if (bands.length <= 1) return;
+
+  const bandEffectsCache = [];
+  const mutationWorkspaceVector = new Float64Array(N);
+  for (let k = 0; k < bands.length; k++) {
+    bandEffectsCache.push(new Float64Array(N));
+    const coeffs = computeFilterCoeffs(bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k].type);
+    evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im, N, bandEffectsCache[k]);
+  }
+
+  const globalResidual = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    globalResidual[i] = targetDbArray[i] - baselineDbArray[i];
+    for (let k = 0; k < bands.length; k++) {
+      globalResidual[i] -= bandEffectsCache[k][i];
+    }
+  }
+
+  const evaluateMutation = (bandIdx, testFc, testGain, testQ, currentType) => {
+    const coeffs = computeFilterCoeffs(testFc, testGain, testQ, sampleRate, currentType);
+    evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData.dz2_re, freqData.dz2_im, N, mutationWorkspaceVector);
+    const cached = bandEffectsCache[bandIdx];
+    let deltaSSE = 0;
+    for (let i = 0; i < N; i++) {
+      let currentRes = globalResidual[i] + cached[i];
+      let newRes = currentRes - mutationWorkspaceVector[i];
+      deltaSSE += (newRes * newRes - globalResidual[i] * globalResidual[i]) * weights[i];
+    }
+    return deltaSSE;
+  };
+
+  const applyMutation = (bandIdx, targetBand, newFc, newGain, newQ) => {
+    const cached = bandEffectsCache[bandIdx];
+    for (let i = 0; i < N; i++) {
+      let eff = mutationWorkspaceVector[i];
+      globalResidual[i] += cached[i] - eff;
+      cached[i] = eff;
+    }
+    targetBand.fc = Math.round(newFc * 100) / 100;
+    targetBand.gain = Math.round(newGain * 100) / 100;
+    targetBand.q = Math.round(newQ * 1000) / 1000;
+  };
+
+  const bandSteps = bands.map(() => ({ fcScale: 1.0, gainScale: 1.0, qScale: 1.0 }));
+  const globalIterations = 35;
+  const EPSILON = -1e-12;
+
+  for (let iter = 0; iter < globalIterations; iter++) {
+    const progress = iter / globalIterations;
+    const annealingDecay = 1.0 - 0.75 * progress;
+
+    for (let j = 0; j < bands.length; j++) {
+      const b = bands[j];
+      const steps = bandSteps[j];
+      const deltaFc = b.fc * 0.02 * annealingDecay * steps.fcScale;
+      const deltaGain = 1.0 * annealingDecay * steps.gainScale;
+      const deltaQ = b.q * 0.15 * annealingDecay * steps.qScale;
+
+      // Frequency optimization
+      if (deltaFc > 0.01) {
+        const testFcPlus = Math.max(20.0, Math.min(sampleRate / 2 - 1, b.fc + deltaFc));
+        const evalPlus = evaluateMutation(j, testFcPlus, b.gain, b.q, b.type);
+        const testFcMinus = Math.max(20.0, Math.min(sampleRate / 2 - 1, b.fc - deltaFc));
+        const evalMinus = evaluateMutation(j, testFcMinus, b.gain, b.q, b.type);
+
+        if (evalPlus < EPSILON && evalPlus <= evalMinus) {
+          evaluateMutation(j, testFcPlus, b.gain, b.q, b.type);
+          applyMutation(j, b, testFcPlus, b.gain, b.q);
+          steps.fcScale = Math.min(2.0, steps.fcScale * 1.2);
+        } else if (evalMinus < EPSILON) {
+          evaluateMutation(j, testFcMinus, b.gain, b.q, b.type);
+          applyMutation(j, b, testFcMinus, b.gain, b.q);
+          steps.fcScale = Math.min(2.0, steps.fcScale * 1.2);
         } else {
-          _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, null);
+          steps.fcScale = Math.max(0.2, steps.fcScale * 0.7);
         }
-
-        _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate);
-
-        return bands
-          .map((b) => ({
-            fc: parseFloat(b.fc.toFixed(2)),
-            gain: parseFloat(b.gain.toFixed(2)),
-            q: parseFloat(clampFilterQ(b.q).toFixed(3)),
-            type: b.type,
-          }))
-          .sort((a, b) => a.fc - b.fc);
       }
 
-      function runPhase1ForType(curve, target, tolerance, maxBands, interpolateFn, sampleRate, filterType) {
-        if (!curve || curve.length === 0 || !target || target.length === 0) return { bands: [], totalVariance: -Infinity };
-        const evalFreqs = generateEvaluationPoints();
-        const N = evalFreqs.length;
-        const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
+      // Q factor optimization
+      if (deltaQ > 0.001) {
+        const qPlusVal = Math.min(MAX_FILTER_Q, b.q + deltaQ);
+        const qMinusVal = Math.max(MIN_FILTER_Q, b.q - deltaQ);
+        const evalQPlus = evaluateMutation(j, b.fc, b.gain, qPlusVal, b.type);
+        const evalQMinus = evaluateMutation(j, b.fc, b.gain, qMinusVal, b.type);
 
-        const residualError = new Float64Array(N);
-        const targetDbArray = new Float64Array(N);
-        const baselineDbArray = new Float64Array(N);
-        for (let i = 0; i < N; i++) {
-          targetDbArray[i] = interpolateFn(target, evalFreqs[i]);
-          baselineDbArray[i] = interpolateFn(curve, evalFreqs[i]);
-          residualError[i] = targetDbArray[i] - baselineDbArray[i];
+        if (evalQPlus < EPSILON && evalQPlus <= evalQMinus) {
+          evaluateMutation(j, b.fc, b.gain, qPlusVal, b.type);
+          applyMutation(j, b, b.fc, b.gain, qPlusVal);
+          steps.qScale = Math.min(2.0, steps.qScale * 1.2);
+        } else if (evalQMinus < EPSILON) {
+          evaluateMutation(j, b.fc, b.gain, qMinusVal, b.type);
+          applyMutation(j, b, b.fc, b.gain, qMinusVal);
+          steps.qScale = Math.min(2.0, steps.qScale * 1.2);
+        } else {
+          steps.qScale = Math.max(0.2, steps.qScale * 0.7);
         }
-
-        const weights = new Float64Array(N);
-        const minLogConst = Math.log10(20);
-        const maxLogConst = Math.log10(20000);
-        for (let i = 0; i < N; i++) {
-          let prevLog = i > 0 ? Math.log10(evalFreqs[i - 1]) : minLogConst;
-          let nextLog = i < N - 1 ? Math.log10(evalFreqs[i + 1]) : maxLogConst;
-          weights[i] = nextLog - prevLog;
-        }
-
-        const unitShapeCache = new Float64Array(N);
-        const effectBuf = new Float64Array(N);
-        const bands = [];
-        let totalVariance = _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, filterType);
-        return { bands, totalVariance };
       }
 
-      function _runPhase1(bands, maxBands, tolerance, evalFreqs, N, freqData, residualError, weights, unitShapeCache, effectBuf, sampleRate, singleType) {
-        let totalVariance = 0;
-        while (bands.length < maxBands) {
-          let worstIdx = -1;
-          let absoluteWorstError = 0;
-          for (let i = 0; i < N; i++) {
-            let absErr = Math.abs(residualError[i]);
-            if (absErr > absoluteWorstError) {
-              absoluteWorstError = absErr;
-            }
-          }
-          if (absoluteWorstError <= tolerance) break;
-          let maxError = 0;
-          for (let i = 0; i < N; i++) {
-            let absErr = Math.abs(residualError[i]);
-            if (absErr < absoluteWorstError) continue;
-            if (absErr > maxError) {
-              maxError = absErr;
-              worstIdx = i;
-            }
-          }
-          if (worstIdx === -1) break;
+      // Gain optimization
+      if (deltaGain > 0.01) {
+        const gPlusVal = Math.min(30.0, b.gain + deltaGain);
+        const gMinusVal = Math.max(-30.0, b.gain - deltaGain);
+        const evalGPlus = evaluateMutation(j, b.fc, gPlusVal, b.q, b.type);
+        const evalGMinus = evaluateMutation(j, b.fc, gMinusVal, b.q, b.type);
 
-          const centerFreq = Math.round(evalFreqs[worstIdx] * 100) / 100;
-          const targetGain = Math.round(residualError[worstIdx] * 100) / 100;
-          let bestMicroQ = 1.4;
-          let bestMicroGain = targetGain;
-          let bestMicroType = 'PK';
-          let maxMicroVariance = -Infinity;
-          const candidateTypes = singleType ? [singleType] : ['PK', 'LSC', 'HSC'];
-
-          for (let testType of candidateTypes) {
-            let currentBestQ = testType === 'PK' ? 1.4 : 0.28;
-            let currentBestGain = targetGain;
-            let currentMaxVariance = -Infinity;
-            let microStep = 100;
-            for (let iter = 0; iter < 50; iter++) {
-              let testTrajectories = [
-                currentBestQ,
-                Math.max(0.01, currentBestQ - microStep),
-                Math.min(MAX_FILTER_Q, currentBestQ + microStep),
-                Math.max(0.01, currentBestQ - microStep * 0.5),
-                Math.min(MAX_FILTER_Q, currentBestQ + microStep * 0.5),
-                Math.max(0.01, currentBestQ - microStep * 0.2),
-                Math.min(MAX_FILTER_Q, currentBestQ + microStep * 0.2),
-              ];
-              for (let qTest of testTrajectories) {
-                let qTestQuantized = Math.round(qTest * 1000) / 1000;
-                const coeffs = computeFilterCoeffs(centerFreq, 1.0, qTestQuantized, sampleRate, testType);
-                const { num, den } = evalAndAccumulate(
-                  coeffs, freqData.dz_re, freqData.dz_im,
-                  freqData.dz2_re, freqData.dz2_im, N,
-                  residualError, weights, unitShapeCache
-                );
-                let idealGain = den !== 0 ? num / den : targetGain;
-                idealGain = Math.max(-30.0, Math.min(30.0, idealGain));
-                idealGain = Math.round(idealGain * 100) / 100;
-                let reduction = 0;
-                for (let i = 0; i < N; i++) {
-                  let effect = idealGain * unitShapeCache[i];
-                  reduction +=
-                    (Math.abs(residualError[i]) -
-                      Math.abs(residualError[i] - effect)) *
-                    weights[i];
-                }
-                if (reduction > currentMaxVariance) {
-                  currentMaxVariance = reduction;
-                  currentBestQ = qTestQuantized;
-                  currentBestGain = idealGain;
-                }
-              }
-              microStep *= 0.5;
-            }
-            if (currentMaxVariance > maxMicroVariance) {
-              maxMicroVariance = currentMaxVariance;
-              bestMicroQ = currentBestQ;
-              bestMicroGain = currentBestGain;
-              bestMicroType = testType;
-            }
-          }
-
-          const microBand = {
-            fc: centerFreq,
-            gain: bestMicroGain,
-            q: bestMicroQ,
-            type: bestMicroType,
-          };
-          bands.push(microBand);
-          totalVariance += maxMicroVariance;
-          const coeffs = computeFilterCoeffs(
-            microBand.fc, microBand.gain, microBand.q, sampleRate, microBand.type
-          );
-          evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
-            freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-          for (let i = 0; i < N; i++) {
-            residualError[i] -= effectBuf[i];
-          }
+        if (evalGPlus < EPSILON && evalGPlus <= evalGMinus) {
+          evaluateMutation(j, b.fc, gPlusVal, b.q, b.type);
+          applyMutation(j, b, b.fc, gPlusVal, b.q);
+          steps.gainScale = Math.min(2.0, steps.gainScale * 1.2);
+        } else if (evalGMinus < EPSILON) {
+          evaluateMutation(j, b.fc, gMinusVal, b.q, b.type);
+          applyMutation(j, b, b.fc, gMinusVal, b.q);
+          steps.gainScale = Math.min(2.0, steps.gainScale * 1.2);
+        } else {
+          steps.gainScale = Math.max(0.2, steps.gainScale * 0.7);
         }
-        return totalVariance;
       }
-
-      function _runPhase2And3(bands, N, freqData, targetDbArray, baselineDbArray, weights, effectBuf, sampleRate) {
-        if (bands.length > 1) {
-          const globalResidual = new Float64Array(N);
-          const bandEffectsCache = [];
-          const mutationWorkspaceVector = new Float64Array(N);
-          for (let k = 0; k < bands.length; k++) {
-            bandEffectsCache.push(new Float64Array(N));
-          }
-          for (let k = 0; k < bands.length; k++) {
-            const coeffs = computeFilterCoeffs(
-              bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k].type
-            );
-            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
-              freqData.dz2_re, freqData.dz2_im, N, bandEffectsCache[k]);
-          }
-          for (let i = 0; i < N; i++) {
-            globalResidual[i] = targetDbArray[i] - baselineDbArray[i];
-            for (let k = 0; k < bands.length; k++) {
-              globalResidual[i] -= bandEffectsCache[k][i];
-            }
-          }
-
-          const evaluateSystemMutation = (bandIdx, testFc, testGain, testQ, currentType) => {
-            let scoreDelta = 0;
-            const quantizedFc = Math.round(testFc * 100) / 100;
-            const quantizedGain = Math.round(testGain * 100) / 100;
-            const quantizedQ = Math.round(testQ * 1000) / 1000;
-            const coeffs = computeFilterCoeffs(quantizedFc, quantizedGain, quantizedQ, sampleRate, currentType);
-            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
-              freqData.dz2_re, freqData.dz2_im, N, mutationWorkspaceVector);
-            const currentCached = bandEffectsCache[bandIdx];
-            for (let i = 0; i < N; i++) {
-              let currentRes = globalResidual[i] + currentCached[i];
-              let newRes = currentRes - mutationWorkspaceVector[i];
-              scoreDelta +=
-                (newRes * newRes - globalResidual[i] * globalResidual[i]) *
-                weights[i];
-            }
-            return scoreDelta;
-          };
-
-          const applySystemMutation = (bandIdx, targetBand, newFc, newGain, newQ) => {
-            const currentCached = bandEffectsCache[bandIdx];
-            for (let i = 0; i < N; i++) {
-              let finalEffect = mutationWorkspaceVector[i];
-              globalResidual[i] += currentCached[i] - finalEffect;
-              currentCached[i] = finalEffect;
-            }
-            targetBand.fc = Math.round(newFc * 100) / 100;
-            targetBand.gain = Math.round(newGain * 100) / 100;
-            targetBand.q = Math.round(newQ * 1000) / 1000;
-          };
-
-          const bandSteps = bands.map(() => ({
-            fcScale: 1.0,
-            gainScale: 1.0,
-            qScale: 1.0,
-          }));
-          const globalIterations = 50;
-          const EPSILON = -1e-15;
-
-          for (let iter = 0; iter < globalIterations; iter++) {
-            let progress = iter / globalIterations;
-            let annealingDecay = Math.pow(1.0 - progress, 0.00000000000000001);
-            for (let j = 0; j < bands.length; j++) {
-              let b = bands[j];
-              let steps = bandSteps[j];
-              let deltaFc = b.fc * 0.01 * annealingDecay * steps.fcScale;
-              let deltaGain = 1.5 * annealingDecay * steps.gainScale;
-              let deltaQ = b.q * 0.125 * annealingDecay * steps.qScale;
-              let mutatedSomething = false;
-
-              if (deltaFc > 0.01) {
-                let testFcPlus = Math.max(20.0, Math.min(20000.0, b.fc + deltaFc));
-                let baseEval = evaluateSystemMutation(j, testFcPlus, b.gain, b.q, b.type);
-                let gainPlusEval = evaluateSystemMutation(j, testFcPlus, b.gain + deltaGain * 0.2, b.q, b.type);
-                let gainMinusEval = evaluateSystemMutation(j, testFcPlus, b.gain - deltaGain * 0.2, b.q, b.type);
-                let bestEval = baseEval;
-                let recGain = b.gain;
-                if (gainPlusEval < bestEval) { bestEval = gainPlusEval; recGain = b.gain + deltaGain * 0.2; }
-                if (gainMinusEval < bestEval) { bestEval = gainMinusEval; recGain = b.gain - deltaGain * 0.2; }
-                if (bestEval < EPSILON) {
-                  evaluateSystemMutation(j, testFcPlus, recGain, b.q, b.type);
-                  applySystemMutation(j, b, testFcPlus, Math.max(-30.0, Math.min(30.0, recGain)), b.q);
-                  steps.fcScale = Math.min(2.0, steps.fcScale * 1.5);
-                  mutatedSomething = true;
-                }
-                if (!mutatedSomething) {
-                  let testFcMinus = Math.max(20.0, Math.min(20000.0, b.fc - deltaFc));
-                  let baseEval = evaluateSystemMutation(j, testFcMinus, b.gain, b.q, b.type);
-                  let gainPlusEval = evaluateSystemMutation(j, testFcMinus, b.gain + deltaGain * 0.2, b.q, b.type);
-                  let gainMinusEval = evaluateSystemMutation(j, testFcMinus, b.gain - deltaGain * 0.2, b.q, b.type);
-                  let bestEval = baseEval;
-                  let recGain = b.gain;
-                  if (gainPlusEval < bestEval) { bestEval = gainPlusEval; recGain = b.gain + deltaGain * 0.2; }
-                  if (gainMinusEval < bestEval) { bestEval = gainMinusEval; recGain = b.gain - deltaGain * 0.2; }
-                  if (bestEval < EPSILON) {
-                    evaluateSystemMutation(j, testFcMinus, recGain, b.q, b.type);
-                    applySystemMutation(j, b, testFcMinus, Math.max(-30.0, Math.min(30.0, recGain)), b.q);
-                    steps.fcScale = Math.min(2.0, steps.fcScale * 1.5);
-                    mutatedSomething = true;
-                  }
-                }
-                if (!mutatedSomething) {
-                  steps.fcScale *= 0.5;
-                }
-              }
-
-              if (deltaQ > 0.001) {
-                let qMutated = false;
-                let qPlusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q + deltaQ, b.type);
-                let qMinusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q - deltaQ, b.type);
-                if (qPlusEval < EPSILON && qPlusEval < qMinusEval) {
-                  let targetQ = Math.min(MAX_FILTER_Q, b.q + deltaQ);
-                  let compGainEval = evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
-                  if (compGainEval < qPlusEval) {
-                    evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
-                    applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain + deltaGain * 0.2)), targetQ);
-                  } else {
-                    evaluateSystemMutation(j, b.fc, b.gain, targetQ, b.type);
-                    applySystemMutation(j, b, b.fc, b.gain, targetQ);
-                  }
-                  steps.qScale = Math.min(2.0, steps.qScale * 1.5);
-                  qMutated = true;
-                } else if (qMinusEval < EPSILON) {
-                  let targetQ = Math.max(0.01, b.q - deltaQ);
-                  let compGainEval = evaluateSystemMutation(j, b.fc, b.gain - deltaGain * 0.2, targetQ, b.type);
-                  if (compGainEval < qMinusEval) {
-                    evaluateSystemMutation(j, b.fc, b.gain - deltaGain * 0.2, targetQ, b.type);
-                    applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain - deltaGain * 0.2)), targetQ);
-                  } else {
-                    evaluateSystemMutation(j, b.fc, b.gain, targetQ, b.type);
-                    applySystemMutation(j, b, b.fc, b.gain, targetQ);
-                  }
-                  steps.qScale = Math.min(2.0, steps.qScale * 1.5);
-                  qMutated = true;
-                }
-                if (!qMutated) {
-                  steps.qScale *= 0.5;
-                }
-              }
-
-              if (deltaGain > 0.01) {
-                let gMutated = false;
-                let gPlusEval = evaluateSystemMutation(j, b.fc, b.gain + deltaGain, b.q, b.type);
-                let gMinusEval = evaluateSystemMutation(j, b.fc, b.gain - deltaGain, b.q, b.type);
-                if (gPlusEval < EPSILON && gPlusEval < gMinusEval) {
-                  evaluateSystemMutation(j, b.fc, b.gain + deltaGain, b.q, b.type);
-                  applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain + deltaGain)), b.q);
-                  steps.gainScale = Math.min(2.0, steps.gainScale * 1.5);
-                  gMutated = true;
-                } else if (gMinusEval < EPSILON) {
-                  evaluateSystemMutation(j, b.fc, b.gain - deltaGain, b.q, b.type);
-                  applySystemMutation(j, b, b.fc, Math.max(-30.0, Math.min(30.0, b.gain - deltaGain)), b.q);
-                  steps.gainScale = Math.min(2.0, steps.gainScale * 1.5);
-                  gMutated = true;
-                }
-                if (!gMutated) {
-                  steps.gainScale *= 0.5;
-                }
-              }
-            }
-          }
-        }
+    }
+  }
+}
 
         const N2 = bands.length;
         if (N2 > 0) {
@@ -1101,7 +1032,6 @@
             }
           }
         }
-      }
     </script>
     <script>
       const canvas = document.getElementById('eq-graph');
