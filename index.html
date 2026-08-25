@@ -55,7 +55,14 @@
         border-bottom: 1px solid #282828;
         display: flex;
         gap: 12px;
+        overflow-x: auto;
         padding: 10px;
+      }
+      .control-panel > button,
+      .control-panel > .slider-group,
+      .control-panel > .select-panel,
+      .control-panel > .norm-freq-input {
+        flex: 0 0 auto;
       }
       .label {
         color: #777;
@@ -97,9 +104,6 @@
         height: 30px;
         padding: 0px;
         text-align: center;
-      }
-      .select-w-small {
-        width: 90px;
       }
       .select-w-medium {
         width: 120px;
@@ -165,9 +169,12 @@
       }
       .add-btn {
         background: #1e3a8a;
-        border-color: #2563eb;
+        border-color: #172554;
         font-size: 11px;
         padding: 3px 8px;
+      }
+      .add-btn:hover {
+        background: #172554;
       }
       .accuracy-container {
         display: flex;
@@ -354,10 +361,23 @@
         background: #7c3aed;
         border-color: #6d28d9;
         height: 30px;
-        width: 105px;
+        width: 165px;
       }
       .btn-export-curve:hover {
         background: #6d28d9 !important;
+      }
+      .btn-import-eq {
+        background: #d97706;
+        border-color: #b45309;
+        height: 30px;
+        width: 90px;
+      }
+      .btn-import-eq:hover {
+        background: #b45309 !important;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
       }
     </style>
     <meta
@@ -398,49 +418,43 @@
         accept=".txt,.csv"
         class="hidden-file-input"
       />
+      <button
+        onclick="document.getElementById('file-eq').click()"
+        id="eq-import-btn"
+        class="btn-import-eq"
+      >
+        Import EQ
+      </button>
+      <input
+        type="file"
+        id="file-eq"
+        accept=".txt,.eq,.cfg"
+        class="hidden-file-input"
+      />
       <button id="export-eq-btn" class="btn-export">Export EQ</button>
       <button id="export-curve-btn" class="btn-export-curve">
-        Export Curve
+        Export Equalized Curve
       </button>
       <button id="autoeq-trigger-btn" class="btn-trigger">Run AutoEQ</button>
-      <span class="label">Max Filter Bands:</span>
+      <span class="label">Filter Count:</span>
       <div class="slider-group">
-        <input type="range" id="band-slider" min="1" max="31" value="10" />
-        <span id="slider-val">10</span>
+        <input type="range" id="band-slider" min="1" max="31" value="20" />
+        <span id="slider-val">20</span>
       </div>
-      <span class="label">Sample Rate:</span>
-      <select id="sample-rate-input" class="select-panel select-w-small">
-        <option value="44100">44100</option>
-        <option value="48000" selected>48000</option>
-        <option value="88200">88200</option>
-        <option value="96000">96000</option>
-        <option value="176400">176400</option>
-        <option value="192000">192000</option>
-        <option value="352800">352800</option>
-        <option value="384000">384000</option>
-        <option value="705600">705600</option>
-        <option value="768000">768000</option>
-        <option value="1411200">1411200</option>
-        <option value="1536000">1536000</option>
-      </select>
       <span class="label">Smoothing:</span>
       <select id="smoothing-input" class="select-panel select-w-medium">
-        <option value="none" selected>None</option>
-        <option value="1/48">1/48 Octave</option>
-        <option value="1/24">1/24 Octave</option>
-        <option value="1/12">1/12 Octave</option>
+        <option value="none">None</option>
+        <option value="1/12" selected>1/12 Octave</option>
         <option value="1/6">1/6 Octave</option>
         <option value="1/3">1/3 Octave</option>
-        <option value="1/2">1/2 Octave</option>
-        <option value="1/1">1/1 Octave</option>
       </select>
-      <span class="label">Smooth Target:</span>
+      <span class="label">Smoothing Target:</span>
       <select id="smoothing-target-input" class="select-panel select-w-large">
-        <option value="both">Curve + Target</option>
-        <option value="curve" selected>Curve</option>
+        <option value="both" selected>Curve + Target</option>
+        <option value="curve">Curve</option>
         <option value="target">Target</option>
       </select>
-      <span class="label">Norm. Freq (Hz):</span>
+      <span class="label">Normalization Frequency:</span>
       <input
         type="number"
         id="norm-freq-input"
@@ -455,10 +469,10 @@
       <div class="sidebar">
         <div class="sidebar-header">
           <div class="accuracy-container">
-            <h3>Filter Bands</h3>
+            <h3>Filters</h3>
             <span id="accuracy-rating">Accuracy: 100.00%</span>
           </div>
-          <button id="add-band-btn" class="add-btn">+ Add Band</button>
+          <button id="add-band-btn" class="add-btn">+ Add Filter</button>
         </div>
         <div id="anchor-list" class="anchor-container"></div>
       </div>
@@ -467,8 +481,17 @@
       </div>
     </div>
     <script>
+      const SAMPLE_RATE = 48000;
+      const MIN_FILTER_Q = 0.01;
+      const MAX_FILTER_Q = 12;
+
+      function clampFilterQ(q) {
+        return Math.max(MIN_FILTER_Q, Math.min(MAX_FILTER_Q, Number(q) || MIN_FILTER_Q));
+      }
+
       function calculateFilterEffect(f, fc, gain, q, sampleRate, type = 'PK') {
-        if (gain === 0 || q <= 0.001) return 0;
+        q = clampFilterQ(q);
+        if (gain === 0) return 0;
         if (fc >= sampleRate / 2 || f >= sampleRate / 2) return 0;
         const w0 = (2 * Math.PI * fc) / sampleRate;
         const w = (2 * Math.PI * f) / sampleRate;
@@ -526,7 +549,8 @@
       }
 
       function computeFilterCoeffs(fc, gain, q, sampleRate, type) {
-        if (gain === 0 || q <= 0.001) return null;
+        q = clampFilterQ(q);
+        if (gain === 0) return null;
         if (fc >= sampleRate / 2) return null;
         const w0 = (2 * Math.PI * fc) / sampleRate;
         const cosW0 = Math.cos(w0);
@@ -713,7 +737,7 @@
           .map((b) => ({
             fc: parseFloat(b.fc.toFixed(2)),
             gain: parseFloat(b.gain.toFixed(2)),
-            q: parseFloat(b.q.toFixed(3)),
+            q: parseFloat(clampFilterQ(b.q).toFixed(3)),
             type: b.type,
           }))
           .sort((a, b) => a.fc - b.fc);
@@ -790,11 +814,11 @@
               let testTrajectories = [
                 currentBestQ,
                 Math.max(0.01, currentBestQ - microStep),
-                Math.min(100, currentBestQ + microStep),
+                Math.min(MAX_FILTER_Q, currentBestQ + microStep),
                 Math.max(0.01, currentBestQ - microStep * 0.5),
-                Math.min(100, currentBestQ + microStep * 0.5),
+                Math.min(MAX_FILTER_Q, currentBestQ + microStep * 0.5),
                 Math.max(0.01, currentBestQ - microStep * 0.2),
-                Math.min(100, currentBestQ + microStep * 0.2),
+                Math.min(MAX_FILTER_Q, currentBestQ + microStep * 0.2),
               ];
               for (let qTest of testTrajectories) {
                 let qTestQuantized = Math.round(qTest * 1000) / 1000;
@@ -964,7 +988,7 @@
                 let qPlusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q + deltaQ, b.type);
                 let qMinusEval = evaluateSystemMutation(j, b.fc, b.gain, b.q - deltaQ, b.type);
                 if (qPlusEval < EPSILON && qPlusEval < qMinusEval) {
-                  let targetQ = Math.min(100, b.q + deltaQ);
+                  let targetQ = Math.min(MAX_FILTER_Q, b.q + deltaQ);
                   let compGainEval = evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
                   if (compGainEval < qPlusEval) {
                     evaluateSystemMutation(j, b.fc, b.gain + deltaGain * 0.2, targetQ, b.type);
@@ -1084,6 +1108,8 @@
       const ctx = canvas.getContext('2d');
       let rawCurveData = null;
       let rawTargetData = null;
+      let normalizedCurveData = null;
+      let normalizedTargetData = null;
       let curveData = null;
       let targetData = null;
       let activeBands = [];
@@ -1096,20 +1122,42 @@
       const MAX_DB = 90;
       const FILTER_TYPES = ['PK', 'LSC', 'HSC'];
 
+      function updateControlsAvailability() {
+        const ready = Boolean(curveData && targetData);
+        [
+          'eq-import-btn',
+          'export-eq-btn',
+          'export-curve-btn',
+          'autoeq-trigger-btn',
+          'add-band-btn',
+        ].forEach((id) => {
+          document.getElementById(id).disabled = !ready;
+        });
+      }
+
       function smoothLogarithmicCurve(rawData, octaveFraction) {
         if (!rawData || rawData.length === 0) return null;
         if (!octaveFraction || octaveFraction === 0) return [...rawData];
         const smoothed = [];
         const N = rawData.length;
         const sigma = octaveFraction / (2 * Math.sqrt(2 * Math.log(2)));
+        const logFrequencies = rawData.map((point) => Math.log2(point.f));
+        const windowRadius = sigma * 4;
         for (let i = 0; i < N; i++) {
           const currentHz = rawData[i].f;
-          const currentLog2 = Math.log2(currentHz);
+          const currentLog2 = logFrequencies[i];
           let sumDb = 0;
           let totalWeight = 0;
-          for (let j = 0; j < N; j++) {
-            const scanHz = rawData[j].f;
-            const scanLog2 = Math.log2(scanHz);
+          let startIndex = i;
+          while (startIndex > 0 && currentLog2 - logFrequencies[startIndex - 1] <= windowRadius) {
+            startIndex--;
+          }
+          let endIndex = i;
+          while (endIndex < N - 1 && logFrequencies[endIndex + 1] - currentLog2 <= windowRadius) {
+            endIndex++;
+          }
+          for (let j = startIndex; j <= endIndex; j++) {
+            const scanLog2 = logFrequencies[j];
             const octaveDist = scanLog2 - currentLog2;
             let weight = Math.exp(-0.5 * Math.pow(octaveDist / sigma, 2));
             sumDb += rawData[j].db * weight;
@@ -1128,11 +1176,15 @@
         const offset = 60 - dbAtNorm;
         return data.map((pt) => ({ f: pt.f, db: pt.db + offset }));
       }
+      function refreshNormalizedData() {
+        normalizedCurveData = normalizeData(rawCurveData);
+        normalizedTargetData = normalizeData(rawTargetData);
+      }
       function applySmoothingConfiguration() {
         const mode = document.getElementById('smoothing-input').value;
         const smoothTarget = document.getElementById('smoothing-target-input').value;
-        curveData = normalizeData(rawCurveData);
-        targetData = normalizeData(rawTargetData);
+        curveData = normalizedCurveData ? [...normalizedCurveData] : null;
+        targetData = normalizedTargetData ? [...normalizedTargetData] : null;
         if (mode !== 'none') {
           const parts = mode.split('/');
           const numerator = parseFloat(parts[0]);
@@ -1147,6 +1199,7 @@
         }
       }
       function reparseAndRedraw() {
+        refreshNormalizedData();
         applySmoothingConfiguration();
         renderAnchorList();
         drawGraph();
@@ -1186,9 +1239,8 @@
         let t = (freq - left.f) / (right.f - left.f);
         return left.db + t * (right.db - left.db);
       }
-      const sampleRateInput = document.getElementById('sample-rate-input');
       function getSelectedSampleRate() {
-        return parseInt(sampleRateInput.value) || 48000;
+        return SAMPLE_RATE;
       }
       function getActiveFilterList() {
         return activeBands.filter((b) => b.enabled !== false);
@@ -1250,6 +1302,23 @@
         const pct = 1 - (y - PADDING_TOP) / innerHeight;
         return MIN_DB + pct * (MAX_DB - MIN_DB);
       }
+      function reconstructData(data, pointCount = 1000) {
+        if (!data || data.length === 0) return null;
+        const reconstructedByFrequency = new Map();
+        const minFreq = data[0].f;
+        const maxFreq = data[data.length - 1].f;
+        const minLog = Math.log10(minFreq);
+        const maxLog = Math.log10(maxFreq);
+        for (let i = 0; i < pointCount; i++) {
+          const frequency = Math.pow(10, minLog + (i / (pointCount - 1)) * (maxLog - minLog));
+          reconstructedByFrequency.set(frequency, { f: frequency, db: interpolate(data, frequency) });
+        }
+        data.forEach((point) => {
+          reconstructedByFrequency.set(point.f, { f: point.f, db: point.db });
+        });
+        return [...reconstructedByFrequency.values()].sort((a, b) => a.f - b.f);
+      }
+
       function parseFRFile(text) {
         const lines = text.split('\n');
         let parsed = [];
@@ -1343,12 +1412,15 @@
       }
       function renderAnchorList() {
         const container = document.getElementById('anchor-list');
+        const scrollTop = container.scrollTop;
         container.innerHTML = '';
+        updateControlsAvailability();
         updateAccuracyDisplay();
         activeBands.forEach((band, idx) => {
           const row = document.createElement('div');
           row.className = 'band-row';
           if (!band.type) band.type = 'PK';
+          band.q = clampFilterQ(band.q);
           if (band.enabled === undefined) band.enabled = true;
           if (!band.enabled) row.classList.add('band-disabled');
           const eyeSvg = band.enabled
@@ -1387,7 +1459,7 @@
                 e.target.value = val.toFixed(2);
               }
               if (field === 'q') {
-                val = Math.max(0.01, Math.min(100, val));
+                val = clampFilterQ(val);
                 e.target.value = val.toFixed(3);
               }
               if (field === 'gain') {
@@ -1416,15 +1488,10 @@
             drawGraph();
           });
         });
+        container.scrollTop = scrollTop;
       }
-      sampleRateInput.addEventListener('change', () => {
-        clampBandsToNyquist();
-        if (curveData && targetData) {
-          renderAnchorList();
-        }
-        drawGraph();
-      });
       document.getElementById('add-band-btn').addEventListener('click', () => {
+        if (!curveData || !targetData) return;
         activeBands.push({ fc: 1000, gain: 0.0, q: 1.0, type: 'PK', enabled: true });
         renderAnchorList();
         drawGraph();
@@ -1432,7 +1499,9 @@
       document.getElementById('file-curve').addEventListener('change', (e) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
-          rawCurveData = parseFRFile(ev.target.result);
+          rawCurveData = reconstructData(parseFRFile(ev.target.result));
+          activeBands = [];
+          refreshNormalizedData();
           applySmoothingConfiguration();
           renderAnchorList();
           drawGraph();
@@ -1442,7 +1511,8 @@
       document.getElementById('file-target').addEventListener('change', (e) => {
         const reader = new FileReader();
         reader.onload = (ev) => {
-          rawTargetData = parseFRFile(ev.target.result);
+          rawTargetData = reconstructData(parseFRFile(ev.target.result));
+          refreshNormalizedData();
           applySmoothingConfiguration();
           renderAnchorList();
           drawGraph();
@@ -1470,7 +1540,73 @@
 
       let dragState = null;
       let hoverBandIdx = -1;
+      let dragRenderFrame = 0;
+      let dragCurveCache = null;
       const HIT_RADIUS = 12;
+
+      function scheduleDragRender() {
+        if (dragRenderFrame) return;
+        dragRenderFrame = requestAnimationFrame(() => {
+          dragRenderFrame = 0;
+          updateAccuracyDisplay();
+          drawGraph();
+        });
+      }
+
+      function updateDraggedBandInputs(idx, band) {
+        const rowInputs = document.querySelectorAll(`[data-idx="${idx}"]`);
+        rowInputs.forEach((input) => {
+          if (input.getAttribute('data-field') === 'fc') input.value = band.fc.toFixed(2);
+          if (input.getAttribute('data-field') === 'gain') input.value = band.gain.toFixed(2);
+        });
+      }
+
+      function prepareDragCurveCache() {
+        if (!curveData || !targetData || !dragState) return;
+        const graphRightEdge = canvas.width - PADDING_RIGHT;
+        const innerWidth = canvas.width - PADDING_LEFT - PADDING_RIGHT;
+        const logMin = Math.log10(MIN_FREQ);
+        const logMax = Math.log10(MAX_FREQ);
+        const currentSR = getSelectedSampleRate();
+        const activeFilters = getActiveFilterList();
+        const frequencies = new Float64Array(graphRightEdge - PADDING_LEFT + 1);
+        const baseline = new Float64Array(frequencies.length);
+        const totalImpact = new Float64Array(frequencies.length);
+        for (let xCoord = PADDING_LEFT; xCoord <= graphRightEdge; xCoord++) {
+          const index = xCoord - PADDING_LEFT;
+          const pct = index / innerWidth;
+          frequencies[index] = Math.pow(10, logMin + pct * (logMax - logMin));
+          baseline[index] = interpolate(curveData, frequencies[index]);
+        }
+        const bandEffects = activeFilters.map(() => new Float64Array(frequencies.length));
+        activeFilters.forEach((band, bandIndex) => {
+          for (let index = 0; index < frequencies.length; index++) {
+            const effect = calculateFilterEffect(
+              frequencies[index], band.fc, band.gain, band.q, currentSR, band.type || 'PK'
+            );
+            bandEffects[bandIndex][index] = effect;
+            totalImpact[index] += effect;
+          }
+        });
+        dragCurveCache = { frequencies, baseline, totalImpact, bandEffects, activeFilters };
+      }
+
+      function updateDragCurveCache() {
+        if (!dragCurveCache || !dragState) return;
+        const bandIndex = dragCurveCache.activeFilters.indexOf(activeBands[dragState.idx]);
+        if (bandIndex < 0) return;
+        const band = activeBands[dragState.idx];
+        const effects = dragCurveCache.bandEffects[bandIndex];
+        const currentSR = getSelectedSampleRate();
+        for (let index = 0; index < effects.length; index++) {
+          const previousEffect = effects[index];
+          const nextEffect = calculateFilterEffect(
+            dragCurveCache.frequencies[index], band.fc, band.gain, band.q, currentSR, band.type || 'PK'
+          );
+          effects[index] = nextEffect;
+          dragCurveCache.totalImpact[index] += nextEffect - previousEffect;
+        }
+      }
 
       function getCurveValueAtFreq(freq) {
         if (!curveData || curveData.length === 0) return 60;
@@ -1509,9 +1645,10 @@
         const idx = getBandAtPosition(mx, my);
         if (idx >= 0) {
           dragState = { idx, startX: mx, startY: my, origFc: activeBands[idx].fc, origGain: activeBands[idx].gain };
+          prepareDragCurveCache();
           canvas.style.cursor = 'grabbing';
           e.preventDefault();
-        } else if (isNearBlueCurve(mx, my)) {
+        } else if (curveData && targetData && isNearBlueCurve(mx, my)) {
           const currentSR = getSelectedSampleRate();
           const nyquistLimit = currentSR / 2 - 1;
           let newFc = getFreqFromX(mx);
@@ -1528,6 +1665,7 @@
           });
           const newIdx = activeBands.length - 1;
           dragState = { idx: newIdx, startX: mx, startY: my, origFc: activeBands[newIdx].fc, origGain: activeBands[newIdx].gain };
+          prepareDragCurveCache();
           renderAnchorList();
           drawGraph();
           canvas.style.cursor = 'grabbing';
@@ -1550,8 +1688,9 @@
           newGain = Math.max(-30, Math.min(30, newGain));
           band.fc = Math.round(newFc * 100) / 100;
           band.gain = Math.round(newGain * 100) / 100;
-          renderAnchorList();
-          drawGraph();
+          updateDraggedBandInputs(dragState.idx, band);
+          updateDragCurveCache();
+          scheduleDragRender();
         } else {
           const idx = getBandAtPosition(mx, my);
           if (idx !== hoverBandIdx) {
@@ -1565,6 +1704,7 @@
         if (e.button !== 0) return;
         if (dragState) {
           dragState = null;
+          dragCurveCache = null;
           canvas.style.cursor = hoverBandIdx >= 0 ? 'grab' : 'default';
         }
       });
@@ -1598,7 +1738,7 @@
           e.preventDefault();
           const delta = e.deltaY < 0 ? -0.05 : 0.05;
           let newQ = activeBands[idx].q + delta;
-          newQ = Math.max(0.01, Math.min(100, newQ));
+          newQ = clampFilterQ(newQ);
           activeBands[idx].q = Math.round(newQ * 1000) / 1000;
           renderAnchorList();
           drawGraph();
@@ -1723,14 +1863,17 @@
           ctx.lineWidth = 3;
           ctx.beginPath();
           for (let xCoord = PADDING_LEFT; xCoord <= graphRightEdge; xCoord++) {
-            const pct = (xCoord - PADDING_LEFT) / innerWidth;
-            const currentF = Math.pow(10, logMin + pct * (logMax - logMin));
-            let baselineDb = interpolate(curveData, currentF);
-            let totalEqImpact = getAccumulatedEqImpact(
-              currentF,
-              activeFilters,
-              currentSR
-            );
+            const cacheIndex = xCoord - PADDING_LEFT;
+            const pct = cacheIndex / innerWidth;
+            const currentF = dragCurveCache
+              ? dragCurveCache.frequencies[cacheIndex]
+              : Math.pow(10, logMin + pct * (logMax - logMin));
+            let baselineDb = dragCurveCache
+              ? dragCurveCache.baseline[cacheIndex]
+              : interpolate(curveData, currentF);
+            let totalEqImpact = dragCurveCache
+              ? dragCurveCache.totalImpact[cacheIndex]
+              : getAccumulatedEqImpact(currentF, activeFilters, currentSR);
             let finalRenderedDb = baselineDb + totalEqImpact;
             if (xCoord === PADDING_LEFT) ctx.moveTo(xCoord, getY(finalRenderedDb));
             else ctx.lineTo(xCoord, getY(finalRenderedDb));
@@ -1838,7 +1981,29 @@
         }
         return -maxGainFound;
       }
+      function parseEQFile(text) {
+        const importedBands = [];
+        const nyquistLimit = getSelectedSampleRate() / 2 - 1;
+        const filterPattern = /^\s*Filter\s+\d+\s*:\s*(ON|OFF)\s+(PK|LSC|HSC)\s+Fc\s+([-+]?\d*\.?\d+)\s+Hz\s+Gain\s+([-+]?\d*\.?\d+)\s+dB\s+Q\s+([-+]?\d*\.?\d+)\s*$/i;
+        text.split(/\r?\n/).forEach((line) => {
+          const match = line.match(filterPattern);
+          if (!match) return;
+          const fc = Math.max(20, Math.min(nyquistLimit, parseFloat(match[3])));
+          const gain = Math.max(-30, Math.min(30, parseFloat(match[4])));
+          const q = clampFilterQ(parseFloat(match[5]));
+          if (![fc, gain, q].every(Number.isFinite)) return;
+          importedBands.push({
+            fc,
+            gain,
+            q,
+            type: match[2].toUpperCase(),
+            enabled: match[1].toUpperCase() !== 'OFF',
+          });
+        });
+        return importedBands;
+      }
       document.getElementById('export-eq-btn').addEventListener('click', () => {
+        if (!curveData || !targetData) return;
         const preampValue = calculateAutomatedPreamp();
         let apoConfigText = `Preamp: ${preampValue.toFixed(1)} dB\n`;
         activeBands.forEach((band, index) => {
@@ -1863,7 +2028,18 @@
         document.body.removeChild(virtualLink);
         URL.revokeObjectURL(downloadUrl);
       });
+      document.getElementById('file-eq').addEventListener('change', (e) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          if (!rawCurveData || !curveData || !rawTargetData || !targetData) return;
+          activeBands = parseEQFile(ev.target.result);
+          renderAnchorList();
+          drawGraph();
+        };
+        if (e.target.files[0]) reader.readAsText(e.target.files[0]);
+      });
       document.getElementById('export-curve-btn').addEventListener('click', () => {
+        if (!curveData || !targetData) return;
         let curveText = '';
         const currentSR = getSelectedSampleRate();
         const activeFilters = getActiveFilterList();
