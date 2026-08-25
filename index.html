@@ -1114,7 +1114,7 @@
       let targetData = null;
       let activeBands = [];
       let currentTolerance = 0.0;
-      let maxBandsConstraint = 10;
+      let maxBandsConstraint = 20;
       let normFreq = 1000;
       const MIN_FREQ = 20;
       const MAX_FREQ = 20000;
@@ -1468,6 +1468,7 @@
               }
               activeBands[idx][field] = val;
             }
+              invalidateDragCurveCache();
             updateAccuracyDisplay();
             drawGraph();
           });
@@ -1608,6 +1609,10 @@
         }
       }
 
+      function invalidateDragCurveCache() {
+        dragCurveCache = null;
+      }
+
       function getCurveValueAtFreq(freq) {
         if (!curveData || curveData.length === 0) return 60;
         return interpolate(curveData, freq);
@@ -1740,6 +1745,7 @@
           let newQ = activeBands[idx].q + delta;
           newQ = clampFilterQ(newQ);
           activeBands[idx].q = Math.round(newQ * 1000) / 1000;
+          if (dragState) updateDragCurveCache();
           renderAnchorList();
           drawGraph();
         }
@@ -1758,6 +1764,7 @@
           const typeIdx = FILTER_TYPES.indexOf(currentType);
           const nextType = FILTER_TYPES[(typeIdx + 1) % FILTER_TYPES.length];
           activeBands[idx].type = nextType;
+          invalidateDragCurveCache();
           renderAnchorList();
           drawGraph();
         }
