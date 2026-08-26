@@ -486,6 +486,16 @@
       <input type="range" id="band-slider" min="1" max="31" value="20" />
       <span id="slider-val">20</span>
     </div>
+    <span class="label">Sample Rate:</span>
+    <select id="sample-rate-input" class="select-panel select-w-medium">
+      <option value="44100">44100</option>
+      <option value="48000" selected>48000</option>
+      <option value="96000">96000</option>
+      <option value="192000">192000</option>
+      <option value="384000">384000</option>
+      <option value="768000">768 000</option>
+      <option value="1536000">1 536 000</option>
+    </select>
     <span class="label">Smoothing:</span>
     <select id="smoothing-input" class="select-panel select-w-medium">
       <option value="none">None</option>
@@ -519,7 +529,16 @@
     </div>
   </div>
   <script>
-    const SAMPLE_RATE = 48000;
+    const SAMPLE_RATE_OPTIONS = Object.freeze([
+      44100,
+      48000,
+      96000,
+      192000,
+      384000,
+      768000,
+      1536000
+    ]);
+    const DEFAULT_SAMPLE_RATE = 48000;
     const MIN_FILTER_Q = 0.01;
     const MAX_FILTER_Q = 12;
 
@@ -778,7 +797,7 @@
     function runAutoEQ(curve, target, tolerance, maxBands, interpolateFn,
       sampleRate) {
       if (!curve || curve.length === 0 || !target || target.length === 0)
-      return [];
+        return [];
       const evalFreqs = generateEvaluationPoints();
       const N = evalFreqs.length;
       const freqData = precomputeFreqData(evalFreqs, sampleRate, N);
@@ -975,20 +994,20 @@
 
       const evaluateMutation = (bandIdx, testFc, testGain, testQ,
         currentType) => {
-          const coeffs = computeFilterCoeffs(testFc, testGain, testQ,
-            sampleRate, currentType);
-          evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData
-            .dz2_re, freqData.dz2_im, N, mutationWorkspaceVector);
-          const cached = bandEffectsCache[bandIdx];
-          let deltaSSE = 0;
-          for (let i = 0; i < N; i++) {
-            let currentRes = globalResidual[i] + cached[i];
-            let newRes = currentRes - mutationWorkspaceVector[i];
-            deltaSSE += (newRes * newRes - globalResidual[i] * globalResidual[
-              i]) * weights[i];
-          }
-          return deltaSSE;
-        };
+        const coeffs = computeFilterCoeffs(testFc, testGain, testQ,
+          sampleRate, currentType);
+        evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im, freqData
+          .dz2_re, freqData.dz2_im, N, mutationWorkspaceVector);
+        const cached = bandEffectsCache[bandIdx];
+        let deltaSSE = 0;
+        for (let i = 0; i < N; i++) {
+          let currentRes = globalResidual[i] + cached[i];
+          let newRes = currentRes - mutationWorkspaceVector[i];
+          deltaSSE += (newRes * newRes - globalResidual[i] * globalResidual[
+            i]) * weights[i];
+        }
+        return deltaSSE;
+      };
 
       const applyMutation = (bandIdx, targetBand, newFc, newGain, newQ) => {
         const cached = bandEffectsCache[bandIdx];
@@ -1073,7 +1092,7 @@
             const gMinusVal = Math.max(-30.0, b.gain - deltaGain);
             const evalGPlus = evaluateMutation(j, b.fc, gPlusVal, b.q, b.type);
             const evalGMinus = evaluateMutation(j, b.fc, gMinusVal, b.q, b
-            .type);
+              .type);
 
             if (evalGPlus < EPSILON && evalGPlus <= evalGMinus) {
               evaluateMutation(j, b.fc, gPlusVal, b.q, b.type);
@@ -1089,71 +1108,73 @@
           }
         }
       }
-    }
 
-    const N2 = bands.length;
-    if (N2 > 0) {
-      const cdResidual = new Float64Array(N);
-      for (let k = 0; k < N2; k++) {
-        const coeffs = computeFilterCoeffs(
-          bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k].type ||
-          'PK'
-        );
-        evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
-          freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-        for (let i = 0; i < N; i++) cdResidual[i] += effectBuf[i];
-      }
-      for (let i = 0; i < N; i++) {
-        cdResidual[i] = targetDbArray[i] - baselineDbArray[i] - cdResidual[i];
-      }
-      const globalCDIterations = 10;
-      for (let iter = 0; iter < globalCDIterations; iter++) {
-        for (let j = 0; j < N2; j++) {
-          let b = bands[j];
-          const coeffs = computeFilterCoeffs(b.fc, b.gain, b.q, sampleRate, b
-            .type || 'PK');
+      const N2 = bands.length;
+      if (N2 > 0) {
+        const cdResidual = new Float64Array(N);
+        for (let k = 0; k < N2; k++) {
+          const coeffs = computeFilterCoeffs(
+            bands[k].fc, bands[k].gain, bands[k].q, sampleRate, bands[k]
+            .type ||
+            'PK'
+          );
           evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
             freqData.dz2_re, freqData.dz2_im, N, effectBuf);
           for (let i = 0; i < N; i++) cdResidual[i] += effectBuf[i];
+        }
+        for (let i = 0; i < N; i++) {
+          cdResidual[i] = targetDbArray[i] - baselineDbArray[i] - cdResidual[i];
+        }
+        const globalCDIterations = 10;
+        for (let iter = 0; iter < globalCDIterations; iter++) {
+          for (let j = 0; j < N2; j++) {
+            let b = bands[j];
+            const coeffs = computeFilterCoeffs(b.fc, b.gain, b.q, sampleRate, b
+              .type || 'PK');
+            evalFilterBatch(coeffs, freqData.dz_re, freqData.dz_im,
+              freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+            for (let i = 0; i < N; i++) cdResidual[i] += effectBuf[i];
 
-          let lowGain = -30.0;
-          let highGain = 30.0;
-          const goldenRatio = 0.6180339887498949;
-          for (let step = 0; step < 20; step++) {
-            let gain1 = highGain - (highGain - lowGain) * goldenRatio;
-            let gain2 = lowGain + (highGain - lowGain) * goldenRatio;
-            let qGain1 = Math.round(gain1 * 100) / 100;
-            let qGain2 = Math.round(gain2 * 100) / 100;
-            const c1 = computeFilterCoeffs(b.fc, qGain1, b.q, sampleRate, b
-              .type || 'PK');
-            const c2 = computeFilterCoeffs(b.fc, qGain2, b.q, sampleRate, b
-              .type || 'PK');
-            evalFilterBatch(c1, freqData.dz_re, freqData.dz_im,
+            let lowGain = -30.0;
+            let highGain = 30.0;
+            const goldenRatio = 0.6180339887498949;
+            for (let step = 0; step < 20; step++) {
+              let gain1 = highGain - (highGain - lowGain) * goldenRatio;
+              let gain2 = lowGain + (highGain - lowGain) * goldenRatio;
+              let qGain1 = Math.round(gain1 * 100) / 100;
+              let qGain2 = Math.round(gain2 * 100) / 100;
+              const c1 = computeFilterCoeffs(b.fc, qGain1, b.q, sampleRate, b
+                .type || 'PK');
+              const c2 = computeFilterCoeffs(b.fc, qGain2, b.q, sampleRate, b
+                .type || 'PK');
+              evalFilterBatch(c1, freqData.dz_re, freqData.dz_im,
+                freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+              let score1 = 0;
+              for (let i = 0; i < N; i++) {
+                let err1 = cdResidual[i] - effectBuf[i];
+                score1 += err1 * err1 * weights[i];
+              }
+              evalFilterBatch(c2, freqData.dz_re, freqData.dz_im,
+                freqData.dz2_re, freqData.dz2_im, N, effectBuf);
+              let score2 = 0;
+              for (let i = 0; i < N; i++) {
+                let err2 = cdResidual[i] - effectBuf[i];
+                score2 += err2 * err2 * weights[i];
+              }
+              if (score1 < score2) {
+                highGain = gain2;
+              } else {
+                lowGain = gain1;
+              }
+            }
+            b.gain = Math.round((lowGain + highGain) * 0.5 * 100) / 100;
+            const finalCoeffs = computeFilterCoeffs(b.fc, b.gain, b.q,
+              sampleRate,
+              b.type || 'PK');
+            evalFilterBatch(finalCoeffs, freqData.dz_re, freqData.dz_im,
               freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-            let score1 = 0;
-            for (let i = 0; i < N; i++) {
-              let err1 = cdResidual[i] - effectBuf[i];
-              score1 += err1 * err1 * weights[i];
-            }
-            evalFilterBatch(c2, freqData.dz_re, freqData.dz_im,
-              freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-            let score2 = 0;
-            for (let i = 0; i < N; i++) {
-              let err2 = cdResidual[i] - effectBuf[i];
-              score2 += err2 * err2 * weights[i];
-            }
-            if (score1 < score2) {
-              highGain = gain2;
-            } else {
-              lowGain = gain1;
-            }
+            for (let i = 0; i < N; i++) cdResidual[i] -= effectBuf[i];
           }
-          b.gain = Math.round((lowGain + highGain) * 0.5 * 100) / 100;
-          const finalCoeffs = computeFilterCoeffs(b.fc, b.gain, b.q, sampleRate,
-            b.type || 'PK');
-          evalFilterBatch(finalCoeffs, freqData.dz_re, freqData.dz_im,
-            freqData.dz2_re, freqData.dz2_im, N, effectBuf);
-          for (let i = 0; i < N; i++) cdResidual[i] -= effectBuf[i];
         }
       }
     }
@@ -1161,6 +1182,8 @@
   <script>
     const canvas = document.getElementById('eq-graph');
     const ctx = canvas.getContext('2d');
+    const sampleRateInput = document.getElementById('sample-rate-input');
+    let selectedSampleRate = DEFAULT_SAMPLE_RATE;
     let rawCurveData = null;
     let rawTargetData = null;
     let normalizedCurveData = null;
@@ -1176,6 +1199,19 @@
     const MIN_DB = 30;
     const MAX_DB = 90;
     const FILTER_TYPES = ['PK', 'LSC', 'HSC'];
+
+    function syncSelectedSampleRate() {
+      const requestedRate = Number(sampleRateInput.value);
+      if (SAMPLE_RATE_OPTIONS.includes(requestedRate)) {
+        selectedSampleRate = requestedRate;
+      } else {
+        selectedSampleRate = DEFAULT_SAMPLE_RATE;
+        sampleRateInput.value = String(DEFAULT_SAMPLE_RATE);
+      }
+      return selectedSampleRate;
+    }
+
+    syncSelectedSampleRate();
 
     function updateControlsAvailability() {
       const ready = Boolean(curveData && targetData);
@@ -1270,11 +1306,11 @@
       drawGraph();
     }
     document.getElementById('smoothing-input').addEventListener('change',
-    () => {
-      applySmoothingConfiguration();
-      renderAnchorList();
-      drawGraph();
-    });
+      () => {
+        applySmoothingConfiguration();
+        renderAnchorList();
+        drawGraph();
+      });
     document
       .getElementById('smoothing-target-input')
       .addEventListener('change', () => {
@@ -1309,7 +1345,7 @@
     }
 
     function getSelectedSampleRate() {
-      return SAMPLE_RATE;
+      return selectedSampleRate;
     }
 
     function getActiveFilterList() {
@@ -1538,23 +1574,25 @@
         element.addEventListener('input', (e) => {
           const idx = parseInt(e.target.getAttribute('data-idx'));
           const field = e.target.getAttribute('data-field');
-          const loopSR = getSelectedSampleRate();
-          const nyquistLimit = loopSR / 2 - 1;
           if (field === 'type') {
             activeBands[idx][field] = e.target.value;
           } else {
-            let val = parseFloat(e.target.value) || 0;
+            const rawValue = e.target.value.trim();
+            if (rawValue === '' || rawValue === '-' || rawValue ===
+              '.' ||
+              rawValue === '-.') return;
+            let val = Number(rawValue);
+            if (!Number.isFinite(val)) return;
             if (field === 'fc') {
+              const loopSR = getSelectedSampleRate();
+              const nyquistLimit = loopSR / 2 - 1;
               val = Math.max(20, Math.min(nyquistLimit, val));
-              e.target.value = val.toFixed(2);
             }
             if (field === 'q') {
               val = clampFilterQ(val);
-              e.target.value = val.toFixed(3);
             }
             if (field === 'gain') {
               val = Math.max(-30, Math.min(30, val));
-              e.target.value = val.toFixed(2);
             }
             activeBands[idx][field] = val;
           }
@@ -1562,6 +1600,33 @@
           updateAccuracyDisplay();
           drawGraph();
         });
+        if (element.matches('input[type="number"]')) {
+          const commitValue = (e) => {
+            const idx = parseInt(e.target.getAttribute('data-idx'));
+            const field = e.target.getAttribute('data-field');
+            if (!Number.isInteger(idx) || !field || field === 'type')
+              return;
+            let val = Number(e.target.value.trim());
+            if (!Number.isFinite(val)) {
+              val = activeBands[idx][field];
+            } else if (field === 'fc') {
+              const nyquistLimit = getSelectedSampleRate() / 2 - 1;
+              val = Math.max(20, Math.min(nyquistLimit, val));
+            } else if (field === 'q') {
+              val = clampFilterQ(val);
+            } else if (field === 'gain') {
+              val = Math.max(-30, Math.min(30, val));
+            }
+            activeBands[idx][field] = val;
+            e.target.value = field === 'q' ? val.toFixed(3) : val.toFixed(
+              2);
+            invalidateDragCurveCache();
+            updateAccuracyDisplay();
+            drawGraph();
+          };
+          element.addEventListener('change', commitValue);
+          element.addEventListener('blur', commitValue);
+        }
       });
       container.querySelectorAll('.del-btn').forEach((btn) => {
         btn.addEventListener('click', (e) => {
@@ -1574,7 +1639,7 @@
       container.querySelectorAll('.eye-toggle').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           const idx = parseInt(e.currentTarget.getAttribute(
-          'data-idx'));
+            'data-idx'));
           activeBands[idx].enabled = !activeBands[idx].enabled;
           renderAnchorList();
           drawGraph();
@@ -1623,6 +1688,13 @@
     bandSlider.addEventListener('input', (e) => {
       maxBandsConstraint = parseInt(e.target.value);
       sliderVal.innerText = maxBandsConstraint;
+    });
+    sampleRateInput.addEventListener('change', () => {
+      syncSelectedSampleRate();
+      clampBandsToNyquist();
+      invalidateDragCurveCache();
+      renderAnchorList();
+      drawGraph();
     });
     autoEqBtn.addEventListener('click', () => {
       if (!curveData || !targetData) return;
@@ -1746,7 +1818,7 @@
       if (!curveData) return false;
       const f = getFreqFromX(mx);
       if (f < curveData[0].f || f > curveData[curveData.length - 1].f)
-      return false;
+        return false;
       const curveDb = interpolate(curveData, f);
       const curveY = getY(curveDb);
       return Math.abs(my - curveY) <= 15;
@@ -2024,7 +2096,7 @@
             getAccumulatedEqImpact(currentF, activeFilters, currentSR);
           let finalRenderedDb = baselineDb + totalEqImpact;
           if (xCoord === PADDING_LEFT) ctx.moveTo(xCoord, getY(
-          finalRenderedDb));
+            finalRenderedDb));
           else ctx.lineTo(xCoord, getY(finalRenderedDb));
         }
         ctx.stroke();
@@ -2037,7 +2109,7 @@
     }
 
     function drawBandNode(band, idx, currentSR, graphRightEdge,
-    graphBottomEdge) {
+      graphBottomEdge) {
       const cx = getX(band.fc);
       const curveBaseDb = getCurveValueAtFreq(band.fc);
       const cy = getY(curveBaseDb + band.gain);
@@ -2197,35 +2269,35 @@
       if (e.target.files[0]) reader.readAsText(e.target.files[0]);
     });
     document.getElementById('export-curve-btn').addEventListener('click',
-    () => {
-      if (!curveData || !targetData) return;
-      let curveText = '';
-      const currentSR = getSelectedSampleRate();
-      const activeFilters = getActiveFilterList();
-      curveData.forEach((pt) => {
-        const currentF = pt.f;
-        const baselineDb = pt.db;
-        const totalEqImpact = getAccumulatedEqImpact(
-          currentF,
-          activeFilters,
-          currentSR
-        );
-        const finalRenderedDb = baselineDb + totalEqImpact;
-        curveText +=
-          `${currentF.toFixed(2)} ${finalRenderedDb.toFixed(2)}\n`;
+      () => {
+        if (!curveData || !targetData) return;
+        let curveText = '';
+        const currentSR = getSelectedSampleRate();
+        const activeFilters = getActiveFilterList();
+        curveData.forEach((pt) => {
+          const currentF = pt.f;
+          const baselineDb = pt.db;
+          const totalEqImpact = getAccumulatedEqImpact(
+            currentF,
+            activeFilters,
+            currentSR
+          );
+          const finalRenderedDb = baselineDb + totalEqImpact;
+          curveText +=
+            `${currentF.toFixed(2)} ${finalRenderedDb.toFixed(2)}\n`;
+        });
+        const blobData = new Blob([curveText], {
+          type: 'text/plain;charset=utf-8',
+        });
+        const downloadUrl = URL.createObjectURL(blobData);
+        const virtualLink = document.createElement('a');
+        virtualLink.href = downloadUrl;
+        virtualLink.download = 'Equalized_Curve.txt';
+        document.body.appendChild(virtualLink);
+        virtualLink.click();
+        document.body.removeChild(virtualLink);
+        URL.revokeObjectURL(downloadUrl);
       });
-      const blobData = new Blob([curveText], {
-        type: 'text/plain;charset=utf-8',
-      });
-      const downloadUrl = URL.createObjectURL(blobData);
-      const virtualLink = document.createElement('a');
-      virtualLink.href = downloadUrl;
-      virtualLink.download = 'Equalized_Curve.txt';
-      document.body.appendChild(virtualLink);
-      virtualLink.click();
-      document.body.removeChild(virtualLink);
-      URL.revokeObjectURL(downloadUrl);
-    });
     renderAnchorList();
     resizeCanvas();
   </script>
